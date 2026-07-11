@@ -1,0 +1,58 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build outputs
+dist/
+build/
+.next/
+out/
+*.tsbuildinfo
+
+# Environment
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# Deployment scripts (optional — keep in repo if you want version control)
+# deploy-ec2.sh
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# Testing / Coverage
+coverage/
+.nyc_output/
+
+# Prisma
+**/prisma/migrations/.tmp/
+
+# Docker / Local data
+/data/
+docker-data/
+
+# But keep mock data under apps/*/src/data/ (not real data, it's code)
+!apps/*/src/data/
+!apps/*/src/data/**
+
+# Secrets
+*.pem
+*.key
+.secrets/
+
+# Next.js
+.vercel/
+next-env.d.ts

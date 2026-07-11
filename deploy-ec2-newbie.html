@@ -1,0 +1,1602 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>浙工商树洞 · EC2 部署完全菜鸟教程</title>
+    <style>
+      :root {
+        --bg: #0d1117;
+        --surface: #161b22;
+        --surface2: #1c2128;
+        --border: #30363d;
+        --text: #e6edf3;
+        --text-dim: #8b949e;
+        --accent: #f78166;
+        --accent-bg: rgba(247, 129, 102, 0.1);
+        --green: #3fb950;
+        --green-bg: rgba(63, 185, 80, 0.1);
+        --yellow: #d29922;
+        --yellow-bg: rgba(210, 153, 34, 0.12);
+        --red: #f85149;
+        --red-bg: rgba(248, 81, 73, 0.1);
+        --blue: #58a6ff;
+        --blue-bg: rgba(88, 166, 255, 0.1);
+        --purple: #bc8cff;
+        --code-bg: #0d1117;
+        --inline-code-bg: #1f2937;
+      }
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans SC', Roboto, sans-serif;
+        background: var(--bg);
+        color: var(--text);
+        line-height: 1.75;
+        font-size: 15px;
+      }
+
+      /* ── 侧边导航 ── */
+      .sidebar {
+        position: fixed; top: 0; left: 0; bottom: 0;
+        width: 240px; background: var(--surface);
+        border-right: 1px solid var(--border);
+        overflow-y: auto; padding: 1.5rem 0;
+        z-index: 100;
+        scrollbar-width: thin;
+        scrollbar-color: var(--border) transparent;
+      }
+      .sidebar-title {
+        font-size: 11px; font-weight: 700; letter-spacing: 0.08em;
+        text-transform: uppercase; color: var(--text-dim);
+        padding: 0 1.25rem 0.75rem; border-bottom: 1px solid var(--border);
+        margin-bottom: 0.5rem;
+      }
+      .sidebar a {
+        display: block; padding: 0.3rem 1.25rem;
+        color: var(--text-dim); text-decoration: none; font-size: 13px;
+        border-left: 3px solid transparent; transition: all 0.15s;
+        line-height: 1.5;
+      }
+      .sidebar a:hover, .sidebar a.active {
+        color: var(--text); background: var(--surface2);
+        border-left-color: var(--accent);
+      }
+      .sidebar a.part { font-weight: 600; color: var(--text); margin-top: 0.5rem; font-size: 12px; }
+      .sidebar a.sub { padding-left: 2rem; font-size: 12px; }
+
+      /* ── 主内容 ── */
+      .main { margin-left: 240px; padding: 2.5rem 3rem; max-width: 940px; }
+
+      /* ── 标题 ── */
+      .hero { margin-bottom: 3rem; padding-bottom: 2rem; border-bottom: 1px solid var(--border); }
+      .hero h1 { font-size: 2rem; font-weight: 800; margin-bottom: 0.5rem; }
+      .hero h1 span { color: var(--accent); }
+      .hero .subtitle { color: var(--text-dim); font-size: 1rem; }
+      .hero .badges { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-top: 1rem; }
+      .badge {
+        display: inline-block; font-size: 11px; padding: 2px 10px;
+        border-radius: 100px; border: 1px solid var(--border);
+        color: var(--text-dim); font-weight: 500;
+      }
+      .badge.green { border-color: var(--green); color: var(--green); }
+      .badge.blue { border-color: var(--blue); color: var(--blue); }
+      .badge.yellow { border-color: var(--yellow); color: var(--yellow); }
+
+      h2 {
+        font-size: 1.4rem; font-weight: 700; margin: 3rem 0 1rem;
+        color: var(--text); padding-bottom: 0.5rem;
+        border-bottom: 1px solid var(--border);
+      }
+      h2 .part-num {
+        display: inline-block; background: var(--accent-bg);
+        color: var(--accent); font-size: 11px; font-weight: 700;
+        padding: 1px 8px; border-radius: 4px; margin-right: 0.5rem;
+        letter-spacing: 0.05em; vertical-align: middle;
+      }
+      h3 {
+        font-size: 1.05rem; font-weight: 600; margin: 2rem 0 0.75rem;
+        color: var(--text);
+      }
+      h3::before { content: '▸ '; color: var(--accent); }
+
+      p { margin-bottom: 0.85rem; color: var(--text); }
+
+      /* ── 代码块 ── */
+      pre {
+        background: var(--code-bg); border: 1px solid var(--border);
+        border-radius: 8px; padding: 1.1rem 1.25rem; margin: 0.75rem 0 1rem;
+        overflow-x: auto; position: relative;
+        font-size: 13.5px; line-height: 1.6;
+      }
+      pre code { font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', Menlo, monospace; color: var(--text); }
+      .copy-btn {
+        position: absolute; top: 0.5rem; right: 0.5rem;
+        background: var(--surface2); border: 1px solid var(--border);
+        color: var(--text-dim); font-size: 11px; padding: 3px 10px;
+        border-radius: 5px; cursor: pointer; transition: all 0.15s;
+      }
+      .copy-btn:hover { color: var(--text); border-color: var(--blue); }
+      .copy-btn.copied { color: var(--green); border-color: var(--green); }
+
+      code {
+        font-family: 'SF Mono', 'Fira Code', Menlo, monospace;
+        background: var(--inline-code-bg); padding: 1px 6px;
+        border-radius: 4px; font-size: 0.88em; color: var(--purple);
+      }
+      pre code { background: none; padding: 0; color: var(--text); font-size: inherit; }
+
+      /* 注释行 */
+      .cm { color: #8b949e; }
+      .kw { color: #ff7b72; }
+      .str { color: #a5d6ff; }
+      .var { color: #79c0ff; }
+      .num { color: #f2cc60; }
+
+      /* ── 提示框 ── */
+      .box {
+        border-radius: 8px; padding: 1rem 1.25rem; margin: 1rem 0;
+        border: 1px solid; display: flex; gap: 0.85rem;
+      }
+      .box-icon { font-size: 1.1rem; flex-shrink: 0; line-height: 1.75; }
+      .box-body { flex: 1; }
+      .box-body strong { display: block; margin-bottom: 0.3rem; font-size: 0.9rem; }
+      .box-body p { margin-bottom: 0.4rem; font-size: 0.9rem; }
+      .box-body p:last-child { margin-bottom: 0; }
+      .info  { background: var(--blue-bg);   border-color: rgba(88,166,255,0.3);  }
+      .warn  { background: var(--yellow-bg); border-color: rgba(210,153,34,0.35); }
+      .danger{ background: var(--red-bg);    border-color: rgba(248,81,73,0.35);  }
+      .ok    { background: var(--green-bg);  border-color: rgba(63,185,80,0.35);  }
+
+      /* ── 错误排查块 ── */
+      .trouble {
+        background: var(--surface2); border: 1px solid var(--border);
+        border-radius: 8px; margin: 1.25rem 0; overflow: hidden;
+      }
+      .trouble-header {
+        background: var(--red-bg); border-bottom: 1px solid rgba(248,81,73,0.2);
+        padding: 0.6rem 1rem; font-size: 0.85rem; font-weight: 700;
+        color: var(--red); display: flex; align-items: center; gap: 0.5rem;
+      }
+      .trouble-body { padding: 0.9rem 1rem; font-size: 0.9rem; }
+      .trouble-body .label {
+        font-size: 11px; font-weight: 700; text-transform: uppercase;
+        letter-spacing: 0.07em; color: var(--text-dim); margin: 0.75rem 0 0.3rem;
+      }
+      .trouble-body .label:first-child { margin-top: 0; }
+      .trouble-body p { margin-bottom: 0.35rem; }
+
+      /* ── 步骤标记 ── */
+      .steps { counter-reset: step; list-style: none; padding: 0; margin: 0.75rem 0; }
+      .steps li {
+        counter-increment: step; display: flex; gap: 1rem;
+        align-items: flex-start; margin-bottom: 1.5rem;
+      }
+      .steps li::before {
+        content: counter(step); flex-shrink: 0;
+        width: 28px; height: 28px; border-radius: 50%;
+        background: var(--accent-bg); border: 1px solid rgba(247,129,102,0.4);
+        color: var(--accent); font-weight: 700; font-size: 13px;
+        display: flex; align-items: center; justify-content: center;
+        margin-top: 0.15rem;
+      }
+      .steps li .content { flex: 1; }
+      .steps li .content p { margin-bottom: 0.5rem; }
+
+      /* ── 校验块 ── */
+      .verify {
+        background: var(--green-bg); border: 1px solid rgba(63,185,80,0.3);
+        border-radius: 8px; padding: 0.85rem 1.1rem; margin: 0.75rem 0;
+        font-size: 0.88rem;
+      }
+      .verify strong { color: var(--green); display: block; margin-bottom: 0.3rem; }
+
+      /* ── 表格 ── */
+      table { width: 100%; border-collapse: collapse; margin: 0.75rem 0 1rem; font-size: 13.5px; }
+      th, td { padding: 0.55rem 0.85rem; text-align: left; border: 1px solid var(--border); }
+      th { background: var(--surface2); color: var(--text-dim); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; }
+      tr:nth-child(even) td { background: rgba(255,255,255,0.015); }
+
+      /* ── 架构图 ── */
+      .arch {
+        background: var(--surface2); border: 1px solid var(--border);
+        border-radius: 8px; padding: 1.25rem 1.5rem; font-family: monospace;
+        font-size: 13px; line-height: 1.8; color: var(--text-dim);
+        white-space: pre; overflow-x: auto; margin: 1rem 0;
+      }
+      .arch .hi { color: var(--text); font-weight: bold; }
+      .arch .acc { color: var(--accent); }
+      .arch .grn { color: var(--green); }
+      .arch .blu { color: var(--blue); }
+
+      /* ── 分隔线 ── */
+      hr { border: none; border-top: 1px solid var(--border); margin: 2.5rem 0; }
+
+      /* ── 回顶 ── */
+      .totop {
+        position: fixed; bottom: 2rem; right: 2rem;
+        background: var(--surface2); border: 1px solid var(--border);
+        color: var(--text-dim); width: 40px; height: 40px;
+        border-radius: 50%; display: flex; align-items: center; justify-content: center;
+        font-size: 18px; cursor: pointer; text-decoration: none;
+        transition: all 0.15s; box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+      }
+      .totop:hover { color: var(--text); border-color: var(--accent); }
+
+      @media (max-width: 900px) {
+        .sidebar { display: none; }
+        .main { margin-left: 0; padding: 1.5rem 1.25rem; }
+      }
+    </style>
+  </head>
+  <body>
+
+  <!-- ══════════════════ 侧边导航 ══════════════════ -->
+  <nav class="sidebar">
+    <div class="sidebar-title">📦 目录</div>
+    <a href="#intro" class="part">Part 0 · 你必须知道的概念</a>
+    <a href="#part1" class="part">Part 1 · 准备工作</a>
+    <a href="#part1-aws" class="sub">1.1 注册 AWS 账号</a>
+    <a href="#part1-region" class="sub">1.2 切换香港区</a>
+    <a href="#part2" class="part">Part 2 · 创建 EC2</a>
+    <a href="#part2-launch" class="sub">2.1 启动实例</a>
+    <a href="#part2-sg" class="sub">2.2 安全组配置</a>
+    <a href="#part2-eip" class="sub">2.3 弹性 IP</a>
+    <a href="#part3" class="part">Part 3 · SSH 连接</a>
+    <a href="#part3-pem" class="sub">3.1 密钥权限</a>
+    <a href="#part3-connect" class="sub">3.2 第一次登录</a>
+    <a href="#part4" class="part">Part 4 · 安装运行环境</a>
+    <a href="#part4-swap" class="sub">4.1 先加 Swap 内存</a>
+    <a href="#part4-node" class="sub">4.2 Node.js 22</a>
+    <a href="#part4-pnpm" class="sub">4.3 pnpm 9</a>
+    <a href="#part4-pg" class="sub">4.4 PostgreSQL 16</a>
+    <a href="#part4-redis" class="sub">4.5 Redis 7</a>
+    <a href="#part4-caddy" class="sub">4.6 Caddy (反代)</a>
+    <a href="#part5" class="part">Part 5 · 数据库初始化</a>
+    <a href="#part6" class="part">Part 6 · 部署项目代码</a>
+    <a href="#part6-clone" class="sub">6.1 上传代码</a>
+    <a href="#part6-env" class="sub">6.2 配置环境变量</a>
+    <a href="#part6-migrate" class="sub">6.3 数据库迁移</a>
+    <a href="#part6-build" class="sub">6.4 构建项目</a>
+    <a href="#part7" class="part">Part 7 · PM2 进程守护</a>
+    <a href="#part8" class="part">Part 8 · Caddy 域名 &amp; HTTPS</a>
+    <a href="#part9" class="part">Part 9 · AWS SES 邮件</a>
+    <a href="#part10" class="part">Part 10 · 最终验证</a>
+    <a href="#part11" class="part">Part 11 · 错误排查速查表</a>
+    <a href="#part12" class="part">Part 12 · 日常维护</a>
+  </nav>
+
+  <!-- ══════════════════ 主内容 ══════════════════ -->
+  <div class="main">
+
+    <!-- ── Hero ── -->
+    <div class="hero">
+      <h1>浙工商树洞<span> · EC2 部署完全菜鸟教程</span></h1>
+      <div class="subtitle">完全零基础向 · 每一步都有错误排查 · 单机部署（PostgreSQL + Redis 都在一台机器）</div>
+      <div class="badges">
+        <span class="badge green">Node 22</span>
+        <span class="badge green">pnpm 9</span>
+        <span class="badge blue">AWS ap-east-1 香港</span>
+        <span class="badge blue">Ubuntu 24.04 LTS</span>
+        <span class="badge yellow">PostgreSQL 16</span>
+        <span class="badge yellow">Redis 7</span>
+        <span class="badge">Caddy 自动 HTTPS</span>
+        <span class="badge">PM2 进程守护</span>
+      </div>
+    </div>
+
+    <!-- ════════════════════════════════════
+         PART 0 · 概念科普
+    ════════════════════════════════════ -->
+    <h2 id="intro"><span class="part-num">PART 0</span>你必须知道的概念（5 分钟）</h2>
+    <p>如果你第一次接触服务器，先花 5 分钟搞清楚这几个词。知道了之后后面的步骤就不会懵了。</p>
+
+    <table>
+      <thead><tr><th>词汇</th><th>白话解释</th><th>类比</th></tr></thead>
+      <tbody>
+        <tr><td><strong>EC2</strong></td><td>亚马逊租给你的一台「真实电脑」，在香港的机房里 24 小时开着</td><td>你租的网吧电脑，但从不关机</td></tr>
+        <tr><td><strong>SSH</strong></td><td>一种「远程控制」技术，让你在自己的 Mac 里打命令，命令在服务器上执行</td><td>远程桌面，但只有命令行</td></tr>
+        <tr><td><strong>.pem 文件</strong></td><td>你的「钥匙」，证明你有权进入这台服务器。只有一份，丢了就进不去了</td><td>门禁卡</td></tr>
+        <tr><td><strong>安全组</strong></td><td>服务器的「防火墙规则」，控制哪些端口对外开放</td><td>公寓的门卫</td></tr>
+        <tr><td><strong>弹性 IP</strong></td><td>一个固定不变的公网 IP 地址。不绑的话每次重启 IP 会变</td><td>固定电话号码</td></tr>
+        <tr><td><strong>Caddy</strong></td><td>反向代理服务器，负责把用户的请求转发给你的 Node 程序，并自动申请 HTTPS 证书</td><td>前台接待员</td></tr>
+        <tr><td><strong>PM2</strong></td><td>Node.js 进程守护，程序崩溃了自动重启，服务器重启后自动拉起</td><td>保姆</td></tr>
+        <tr><td><strong>Prisma 迁移</strong></td><td>把 schema.prisma 里定义的表结构「应用」到真实数据库里</td><td>给数据库「装修」</td></tr>
+      </tbody>
+    </table>
+
+    <div class="arch"><span class="hi">整体架构（部署完成后长这样）：</span>
+
+  用户浏览器
+      │  HTTPS 443
+      ▼
+  <span class="acc">Caddy（反向代理）</span>
+  ┌─────────────────────────────────────────────────────┐
+  │  forum.你的域名.hk  →  PM2 运行的 Next.js Web   :3001  │
+  │  api.你的域名.hk    →  PM2 运行的 NestJS API    :3000  │
+  │  admin.你的域名.hk  →  PM2 运行的 Next.js Admin :3002  │
+  └─────────────────────────────────────────────────────┘
+            │                    │
+      <span class="grn">PostgreSQL :5432</span>         <span class="blu">Redis :6379</span>
+      (同一台 EC2，               (同一台 EC2，
+       仅监听 localhost)          仅监听 127.0.0.1)
+            │
+       <span class="acc">AWS SES（发验证邮件）</span>
+       <span class="acc">AWS S3（存图片文件）</span></div>
+
+    <div class="box info">
+      <div class="box-icon">💡</div>
+      <div class="box-body">
+        <strong>读这篇教程时，你需要准备：</strong>
+        <p>① Mac 电脑（Windows 也行，SSH 命令一样） ② 一张可以在国际网站消费的信用卡（注册 AWS 用，不会扣费） ③ 你的 HK 域名（如 <code>zjgsu.hk</code>）的管理权</p>
+      </div>
+    </div>
+
+    <hr>
+
+    <!-- ════════════════════════════════════
+         PART 1 · 准备
+    ════════════════════════════════════ -->
+    <h2 id="part1"><span class="part-num">PART 1</span>准备工作：注册 AWS &amp; 切换香港区</h2>
+
+    <h3 id="part1-aws">1.1 注册 AWS 账号</h3>
+    <ol class="steps">
+      <li><div class="content">
+        <p>打开 <a style="color:var(--blue)" href="https://aws.amazon.com" target="_blank">aws.amazon.com</a>，点右上角「创建 AWS 账户」。</p>
+        <p>填写邮箱、密码、账号名（随意）。邮箱最好用自己常用的。</p>
+      </div></li>
+      <li><div class="content">
+        <p>选「个人账户」，填写姓名、地址（可以填香港地址）。</p>
+      </div></li>
+      <li><div class="content">
+        <p>输入信用卡信息，AWS 会扣 $1 验证，随后退回。<strong>不会真正收费</strong>，除非你超过免费额度或使用付费服务。</p>
+      </div></li>
+      <li><div class="content">
+        <p>手机验证通过后，选择「基本支持计划（免费）」。</p>
+      </div></li>
+      <li><div class="content">
+        <p>注册成功！登录到 AWS 控制台。</p>
+      </div></li>
+    </ol>
+
+    <div class="trouble">
+      <div class="trouble-header">🚨 可能出错</div>
+      <div class="trouble-body">
+        <div class="label">症状</div>
+        <p>信用卡验证失败 / 一直转圈</p>
+        <div class="label">原因</div>
+        <p>国内银行卡有外币限制，或卡里余额不足（需要约 ¥7）</p>
+        <div class="label">解决</div>
+        <p>换一张开通了「外币支付」的卡；或用 Visa/Mastercard 外币卡。支付宝 Visa 国际版一般可以。</p>
+      </div>
+    </div>
+
+    <h3 id="part1-region">1.2 切换到香港区</h3>
+    <p>AWS 控制台默认显示「美国东部」区域。我们要改成香港。</p>
+    <ol class="steps">
+      <li><div class="content">
+        <p>登录后，看右上角，有个区域名称（比如「us-east-1」或「亚太区域（首尔）」）。</p>
+      </div></li>
+      <li><div class="content">
+        <p>点击它，在下拉菜单里找「亚太地区（香港）<code>ap-east-1</code>」并点击。</p>
+      </div></li>
+    </ol>
+
+    <div class="trouble">
+      <div class="trouble-header">🚨 可能出错</div>
+      <div class="trouble-body">
+        <div class="label">症状</div>
+        <p>下拉菜单里<strong>找不到香港区</strong></p>
+        <div class="label">原因</div>
+        <p>香港区是「选择性加入」区域，需要手动启用</p>
+        <div class="label">解决</div>
+        <p>进入「账户设置」→「AWS 区域」→ 找到「亚太地区（香港）」→ 点「启用」→ 等几分钟刷新页面。路径：控制台右上角头像 → 账单和成本管理 → 账户 → 滚到「AWS 区域」一栏。</p>
+      </div>
+    </div>
+
+    <hr>
+
+    <!-- ════════════════════════════════════
+         PART 2 · 创建 EC2
+    ════════════════════════════════════ -->
+    <h2 id="part2"><span class="part-num">PART 2</span>创建 EC2 实例</h2>
+
+    <div class="box warn">
+      <div class="box-icon">⚠️</div>
+      <div class="box-body">
+        <strong>确认你现在在「亚太（香港）ap-east-1」区</strong>
+        <p>右上角必须显示「亚太地区（香港）」。在错误的区域创建实例，流量费会更贵而且延迟高。</p>
+      </div>
+    </div>
+
+    <h3 id="part2-launch">2.1 启动实例</h3>
+    <ol class="steps">
+      <li><div class="content">
+        <p>在 AWS 控制台顶部搜索框输入「EC2」，点击进入 EC2 控制台。</p>
+      </div></li>
+      <li><div class="content">
+        <p>点击橙色按钮「启动实例」。</p>
+      </div></li>
+      <li><div class="content">
+        <p><strong>名称</strong>：随意，比如 <code>zjgsu-forum</code>。</p>
+      </div></li>
+      <li><div class="content">
+        <p><strong>操作系统镜像（AMI）</strong>：选「Ubuntu Server 24.04 LTS」，架构选「64 位 (x86)」。</p>
+        <div class="box info"><div class="box-icon">💡</div><div class="box-body"><p>为什么选 Ubuntu 24.04？因为它有官方 PostgreSQL 16 和 Redis 7 的源，长期支持（LTS）到 2029 年，社区文档最多。</p></div></div>
+      </div></li>
+      <li><div class="content">
+        <p><strong>实例类型</strong>：选 <code>t3.small</code>（2 vCPU，2 GB 内存）。</p>
+        <table>
+          <thead><tr><th>实例</th><th>内存</th><th>建议用途</th><th>香港月费（约）</th></tr></thead>
+          <tbody>
+            <tr><td>t3.micro</td><td>1 GB</td><td>❌ 不够用，编译 Next.js 会 OOM</td><td>~$8</td></tr>
+            <tr><td><strong>t3.small</strong></td><td><strong>2 GB</strong></td><td><strong>✅ 推荐起步</strong></td><td><strong>~$16</strong></td></tr>
+            <tr><td>t3.medium</td><td>4 GB</td><td>流量大了再升级</td><td>~$32</td></tr>
+          </tbody>
+        </table>
+      </div></li>
+      <li><div class="content">
+        <p><strong>密钥对（登录）</strong>：点「创建新密钥对」。</p>
+        <ul style="margin-left:1.5rem;margin-top:0.5rem;line-height:2">
+          <li>名称：<code>zjgsu-forum-key</code></li>
+          <li>密钥对类型：RSA</li>
+          <li>私有密钥文件格式：<code>.pem</code>（Mac/Linux 用这个）</li>
+          <li>点「创建密钥对」，浏览器自动下载 <code>hezhong666.pem</code></li>
+        </ul>
+        <div class="box danger"><div class="box-icon">🔐</div><div class="box-body"><strong>这个 .pem 文件非常重要！</strong><p>AWS 只让你下载一次。丢了就只能销毁实例重建。立刻把它移动到安全的地方，比如 <code>~/.ssh/hezhong666.pem</code>，并备份到 iCloud 或加密压缩包。</p></div></div>
+      </div></li>
+      <li><div class="content">
+        <p><strong>存储</strong>：把根卷从默认的 8 GB 改成 <strong>30 GB</strong>。依赖 + 编译产物 + 数据库加起来很容易超 8 GB。</p>
+      </div></li>
+      <li><div class="content">
+        <p><strong>网络设置</strong>：先不动，等到「安全组」一节再改。</p>
+      </div></li>
+      <li><div class="content">
+        <p>点右侧「启动实例」。等 1-2 分钟，状态变为「正在运行」即可。</p>
+      </div></li>
+    </ol>
+
+    <div class="trouble">
+      <div class="trouble-header">🚨 可能出错：实例一直处于「待定」状态</div>
+      <div class="trouble-body">
+        <div class="label">原因</div>
+        <p>香港区资源偶尔不足，或账号刚注册需要等待验证。</p>
+        <div class="label">解决</div>
+        <p>等 5 分钟刷新。如果超过 10 分钟还是「待定」，尝试换可用区（AZ）重建，或提交 AWS Support。</p>
+      </div>
+    </div>
+
+    <h3 id="part2-sg">2.2 配置安全组（防火墙）</h3>
+    <p>默认安全组可能只开了 22 端口，我们需要再加 80 和 443。</p>
+    <ol class="steps">
+      <li><div class="content">
+        <p>在 EC2 控制台，点「实例」，找到刚创建的实例，点击它的 ID 进入详情。</p>
+      </div></li>
+      <li><div class="content">
+        <p>点「安全」选项卡 → 点安全组的名字 → 点「编辑入站规则」。</p>
+      </div></li>
+      <li><div class="content">
+        <p>确保有以下规则（没有的就「添加规则」）：</p>
+        <table>
+          <thead><tr><th>类型</th><th>端口</th><th>来源</th><th>说明</th></tr></thead>
+          <tbody>
+            <tr><td>SSH</td><td>22</td><td>我的 IP（<code>My IP</code>）</td><td>只允许你的 IP 登录，更安全</td></tr>
+            <tr><td>HTTP</td><td>80</td><td>任何地方（<code>0.0.0.0/0</code>）</td><td>HTTP 访问</td></tr>
+            <tr><td>HTTPS</td><td>443</td><td>任何地方（<code>0.0.0.0/0</code>）</td><td>HTTPS 访问</td></tr>
+          </tbody>
+        </table>
+      </div></li>
+      <li><div class="content">
+        <p>点「保存规则」。</p>
+      </div></li>
+    </ol>
+
+    <div class="box danger">
+      <div class="box-icon">🚫</div>
+      <div class="box-body">
+        <strong>千万不要开放 5432（PostgreSQL）或 6379（Redis）端口给外网！</strong>
+        <p>数据库只应该在服务器内部访问。一旦开放，全球扫描机器人会在几分钟内找到并暴力破解你的数据库。</p>
+      </div>
+    </div>
+
+    <div class="trouble">
+      <div class="trouble-header">🚨 可能出错：设置了「My IP」但后来 SSH 连不上了</div>
+      <div class="trouble-body">
+        <div class="label">原因</div>
+        <p>家用宽带 IP 是动态的，换了网络或重拨就变了</p>
+        <div class="label">解决</div>
+        <p>回到安全组，把 SSH 的来源改成你的新 IP（Google 搜「我的 IP」就能看到），或者暂时改成 <code>0.0.0.0/0</code>，登录进去做完配置后再改回来。</p>
+      </div>
+    </div>
+
+    <h3 id="part2-eip">2.3 绑定弹性 IP（固定公网 IP）</h3>
+    <p>不绑弹性 IP 的话，每次重启实例公网 IP 会变，域名解析就失效了。</p>
+    <ol class="steps">
+      <li><div class="content">
+        <p>EC2 控制台左侧菜单 → 「网络与安全」→「弹性 IP」→ 点「分配弹性 IP 地址」→ 点「分配」。</p>
+      </div></li>
+      <li><div class="content">
+        <p>选中刚分配的 IP → 「操作」→「关联弹性 IP 地址」。</p>
+        <p>选择你的实例，实例的私有 IP 也选一下，点「关联」。</p>
+      </div></li>
+      <li><div class="content">
+        <p>回到「实例」页，你的实例现在会显示一个固定的「弹性 IP 地址」，记下来，后面配置 DNS 要用。</p>
+      </div></li>
+    </ol>
+
+    <div class="box warn">
+      <div class="box-icon">⚠️</div>
+      <div class="box-body">
+        <strong>弹性 IP 不用时会收费</strong>
+        <p>弹性 IP 分配了但没有关联到运行中的实例，或实例被停止了，AWS 会收约 $0.005/小时 的费用。所以要么绑着用，要么释放掉。</p>
+      </div>
+    </div>
+
+    <hr>
+
+    <!-- ════════════════════════════════════
+         PART 3 · SSH 连接
+    ════════════════════════════════════ -->
+    <h2 id="part3"><span class="part-num">PART 3</span>第一次 SSH 连接服务器</h2>
+    <p>SSH 就是「远程控制命令行」。你在自己的 Mac 终端里打命令，命令在服务器上执行。</p>
+
+    <h3 id="part3-pem">3.1 设置密钥文件权限</h3>
+    <p>先在自己的 Mac 上操作（打开「终端」应用，<strong>不需要移动 .pem 文件</strong>，放在下载目录就行）：</p>
+
+    <pre><button class="copy-btn">复制</button><code><span class="cm"># 设置正确权限（SSH 强制要求，权限太宽会被拒绝）</span>
+chmod 400 ~/Downloads/hezhong666.pem
+
+<span class="cm"># 确认一下</span>
+ls -la ~/Downloads/hezhong666.pem
+<span class="cm"># 应该看到类似：-r--------  1 你的用户名 ...</span></code></pre>
+
+    <div class="box info">
+      <div class="box-icon">💡</div>
+      <div class="box-body">
+        <strong>为什么要 chmod 400？</strong>
+        <p>SSH 出于安全原因，发现密钥文件权限太开放（别人也能读）就直接拒绝使用。<code>chmod 400</code> 表示「只有你自己可以读，其他人什么权限都没有」。</p>
+      </div>
+    </div>
+
+    <div class="trouble">
+      <div class="trouble-header">🚨 可能出错：chmod 报错 No such file or directory</div>
+      <div class="trouble-body">
+        <div class="label">原因</div>
+        <p>.pem 文件不在 <code>~/Downloads</code>，或者文件名不一样</p>
+        <div class="label">解决</div>
+        <p>在 Finder 里找到 .pem 文件，右键 → 「在终端中打开所在文件夹」，然后运行 <code>chmod 400 hezhong666.pem</code>。SSH 命令里的 <code>-i</code> 路径也要对应修改。</p>
+      </div>
+    </div>
+
+    <h3 id="part3-connect">3.2 第一次登录</h3>
+
+    <pre><button class="copy-btn">复制</button><code><span class="cm"># 把 你的弹性IP 替换成刚才记下来的那个 IP 地址</span>
+ssh -i ~/Downloads/hezhong666.pem ubuntu@<span class="var">你的弹性IP</span>
+
+<span class="cm"># 例如：</span>
+ssh -i ~/Downloads/hezhong666.pem ubuntu@43.198.xxx.xxx</code></pre>
+
+    <p>第一次连接会问你「确认连接吗？」，输入 <code>yes</code> 回车。连上后终端提示符会变成 <code>ubuntu@ip-xxx-xxx:</code> 开头，说明你现在在服务器上了！</p>
+
+    <div class="trouble">
+      <div class="trouble-header">🚨 可能出错：ssh: connect to host xxx port 22: Connection timed out</div>
+      <div class="trouble-body">
+        <div class="label">原因</div>
+        <p>安全组 22 端口没开，或者你的 IP 不在白名单里</p>
+        <div class="label">解决</div>
+        <p>回到 AWS 控制台 → 安全组 → 入站规则，确认 22 端口的来源包含你当前的 IP。可以临时改成 <code>0.0.0.0/0</code> 测试。</p>
+      </div>
+    </div>
+
+    <div class="trouble">
+      <div class="trouble-header">🚨 可能出错：WARNING: UNPROTECTED PRIVATE KEY FILE!</div>
+      <div class="trouble-body">
+        <div class="label">原因</div>
+        <p>.pem 文件权限太宽（比如 644），SSH 拒绝使用</p>
+        <div class="label">解决</div>
+        <p>运行 <code>chmod 400 ~/Downloads/hezhong666.pem</code> 再重试。</p>
+      </div>
+    </div>
+
+    <div class="trouble">
+      <div class="trouble-header">🚨 可能出错：Permission denied (publickey)</div>
+      <div class="trouble-body">
+        <div class="label">原因</div>
+        <p>用了错误的密钥文件，或者用了错误的用户名（Ubuntu 系统默认用户是 <code>ubuntu</code>，不是 <code>root</code> 或 <code>ec2-user</code>）</p>
+        <div class="label">解决</div>
+        <p>确认命令里是 <code>ubuntu@</code> 开头；确认 <code>-i</code> 后面指向的是正确的 .pem 文件。</p>
+      </div>
+    </div>
+
+    <div class="trouble">
+      <div class="trouble-header">🚨 可能出错：Host key verification failed</div>
+      <div class="trouble-body">
+        <div class="label">原因</div>
+        <p>这个 IP 之前绑定过另一台服务器，SSH 认为「换人了」，拒绝连接</p>
+        <div class="label">解决</div>
+        <p>运行 <code>ssh-keygen -R 你的IP</code>，清除旧记录，再重新连接。</p>
+      </div>
+    </div>
+
+    <p>成功登录后，先做两件事：</p>
+
+    <pre><button class="copy-btn">复制</button><code><span class="cm"># 更新系统软件包列表（必做）</span>
+sudo apt update
+
+<span class="cm"># 如果弹出交互菜单问「restart services」，按回车选默认 OK 即可</span></code></pre>
+
+    <div class="trouble">
+      <div class="trouble-header">🚨 可能出错：apt update 报错 Could not get lock /var/lib/dpkg/lock</div>
+      <div class="trouble-body">
+        <div class="label">原因</div>
+        <p>Ubuntu 启动后会自动跑一次系统更新，这个进程还没结束，锁住了 apt</p>
+        <div class="label">解决</div>
+        <p>等 2-3 分钟再试；或者运行 <code>sudo systemctl stop unattended-upgrades</code> 等它停下，再 <code>sudo apt update</code>。</p>
+      </div>
+    </div>
+
+    <hr>
+
+    <!-- ════════════════════════════════════
+         PART 4 · 安装运行环境
+    ════════════════════════════════════ -->
+    <h2 id="part4"><span class="part-num">PART 4</span>安装运行环境</h2>
+    <p>接下来所有命令都在<strong>服务器上</strong>执行（SSH 连接后的窗口）。</p>
+
+    <h3 id="part4-swap">4.1 先加 Swap 内存（重要！别跳过）</h3>
+    <p>t3.small 只有 2 GB 内存。编译 Next.js 时内存不够会被系统直接 kill 掉。加 2 GB Swap（用硬盘当内存），保护我们。</p>
+
+    <pre><button class="copy-btn">复制</button><code><span class="cm"># 检查当前是否有 swap（没有输出就是没有）</span>
+swapon --show
+
+<span class="cm"># 创建 2GB swap 文件</span>
+sudo fallocate -l 2G /swapfile
+sudo chmod 600 /swapfile
+sudo mkswap /swapfile
+sudo swapon /swapfile
+
+<span class="cm"># 让 swap 重启后自动挂载</span>
+echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
+
+<span class="cm"># 验证</span>
+free -h
+<span class="cm"># 应该能看到 Swap: 2.0Gi</span></code></pre>
+
+    <div class="trouble">
+      <div class="trouble-header">🚨 可能出错：fallocate failed: Operation not supported</div>
+      <div class="trouble-body">
+        <div class="label">原因</div>
+        <p>某些文件系统（btrfs）不支持 fallocate 创建 swap</p>
+        <div class="label">解决</div>
+        <p>换用 <code>dd</code> 命令：<code>sudo dd if=/dev/zero of=/swapfile bs=1M count=2048</code>，然后继续 chmod 600 后面的步骤。</p>
+      </div>
+    </div>
+
+    <h3 id="part4-node">4.2 安装 Node.js 22（通过 nvm）</h3>
+    <p>nvm 是「Node 版本管理器」，可以在同一台机器上装多个版本的 Node 并随时切换。</p>
+
+    <pre><button class="copy-btn">复制</button><code><span class="cm"># 安装 nvm</span>
+curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash
+
+<span class="cm"># ⚠️ 重要：让 nvm 命令生效（不重新 SSH，就手动 source）</span>
+export NVM_DIR="$HOME/.nvm"
+[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+
+<span class="cm"># 安装 Node.js 22</span>
+nvm install 22
+
+<span class="cm"># 设为默认版本</span>
+nvm alias default 22
+
+<span class="cm"># 验证</span>
+node -v   <span class="cm"># 应该显示 v22.x.x</span>
+npm -v    <span class="cm"># 应该显示 10.x.x</span></code></pre>
+
+    <div class="trouble">
+      <div class="trouble-header">🚨 可能出错：nvm: command not found（安装后立刻运行就报这个）</div>
+      <div class="trouble-body">
+        <div class="label">原因</div>
+        <p>nvm 安装脚本修改了 <code>~/.bashrc</code>，但当前 shell 还没有读取</p>
+        <div class="label">解决</div>
+        <p>运行 <code>source ~/.bashrc</code>，或者断开 SSH 重新连接，然后再运行 <code>nvm install 22</code>。</p>
+      </div>
+    </div>
+
+    <div class="trouble">
+      <div class="trouble-header">🚨 可能出错：curl 下载超时 / 连接失败</div>
+      <div class="trouble-body">
+        <div class="label">原因</div>
+        <p>香港 EC2 访问 GitHub raw 内容偶尔不稳定</p>
+        <div class="label">解决</div>
+        <p>等几分钟重试，或者用 wget 替代：<code>wget -qO- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash</code></p>
+      </div>
+    </div>
+
+    <h3 id="part4-pnpm">4.3 安装 pnpm 9</h3>
+
+    <pre><button class="copy-btn">复制</button><code><span class="cm"># 用 npm 全局安装 pnpm</span>
+npm install -g pnpm@9
+
+<span class="cm"># 验证</span>
+pnpm -v   <span class="cm"># 应该显示 9.x.x</span></code></pre>
+
+    <div class="trouble">
+      <div class="trouble-header">🚨 可能出错：pnpm: command not found（安装后找不到）</div>
+      <div class="trouble-body">
+        <div class="label">原因</div>
+        <p>npm 全局安装的位置不在 PATH 里</p>
+        <div class="label">解决</div>
+        <p>运行 <code>npm bin -g</code> 查看全局 bin 目录，然后把它加到 PATH：<code>export PATH="$(npm bin -g):$PATH"</code>。或者直接重新打开终端（SSH 断开再连）。</p>
+      </div>
+    </div>
+
+    <h3 id="part4-pg">4.4 安装 PostgreSQL 16</h3>
+    <p>Ubuntu 24.04 自带的 apt 源里是 PostgreSQL 16，直接安装即可（无需手动添加 pgdg 源）。</p>
+
+    <pre><button class="copy-btn">复制</button><code><span class="cm"># 安装 PostgreSQL 16</span>
+sudo apt install -y postgresql postgresql-contrib
+
+<span class="cm"># 启动并设置开机自启</span>
+sudo systemctl enable postgresql
+sudo systemctl start postgresql
+
+<span class="cm"># 验证是否在运行</span>
+sudo systemctl status postgresql
+<span class="cm"># 看到 Active: active (running) 就对了</span>
+
+<span class="cm"># 再验证版本</span>
+psql --version
+<span class="cm"># 应该显示 psql (PostgreSQL) 16.x</span></code></pre>
+
+    <div class="trouble">
+      <div class="trouble-header">🚨 可能出错：postgresql.service 启动失败</div>
+      <div class="trouble-body">
+        <div class="label">诊断</div>
+        <p>运行 <code>sudo journalctl -xeu postgresql</code> 看详细错误日志。</p>
+        <div class="label">常见原因：端口 5432 被占用</div>
+        <p>运行 <code>sudo lsof -i :5432</code> 查看是什么占用，用 <code>sudo kill -9 &lt;PID&gt;</code> 杀掉，再重启。</p>
+        <div class="label">常见原因：磁盘满了</div>
+        <p>运行 <code>df -h</code>，如果 / 是 100%，删除一些文件或扩容 EBS 卷。</p>
+      </div>
+    </div>
+
+    <h3 id="part4-redis">4.5 安装 Redis 7</h3>
+
+    <pre><button class="copy-btn">复制</button><code><span class="cm"># Ubuntu 24.04 默认源已经有 Redis 7</span>
+sudo apt install -y redis-server
+
+<span class="cm"># 设置开机自启 + 启动</span>
+sudo systemctl enable redis-server
+sudo systemctl start redis-server
+
+<span class="cm"># 验证</span>
+redis-cli ping
+<span class="cm"># 应该返回 PONG</span></code></pre>
+
+    <div class="trouble">
+      <div class="trouble-header">🚨 可能出错：NOAUTH Authentication required（之后连接 Redis 报这个）</div>
+      <div class="trouble-body">
+        <div class="label">原因</div>
+        <p>你给 Redis 设置了密码，但连接时没有传密码</p>
+        <div class="label">解决</div>
+        <p>用 <code>redis-cli -a 你设置的密码</code>，或者在 .env 里把 <code>REDIS_URL=redis://:<strong>密码</strong>@127.0.0.1:6379</code>。</p>
+      </div>
+    </div>
+
+    <h3 id="part4-caddy">4.6 安装 Caddy（反向代理 + 自动 HTTPS）</h3>
+    <p>Caddy 是一个现代反向代理，比 Nginx 简单很多。最大优点：<strong>一行配置就能自动申请并续期 Let's Encrypt 证书</strong>，不需要手动跑 certbot。</p>
+
+    <pre><button class="copy-btn">复制</button><code><span class="cm"># 安装依赖</span>
+sudo apt install -y debian-keyring debian-archive-keyring apt-transport-https curl
+
+<span class="cm"># 添加 Caddy 官方 apt 源</span>
+curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' | sudo gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
+curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' | sudo tee /etc/apt/sources.list.d/caddy-stable.list
+
+<span class="cm"># 安装</span>
+sudo apt update
+sudo apt install -y caddy
+
+<span class="cm"># 验证</span>
+caddy version    <span class="cm"># 应该显示 v2.x.x</span>
+sudo systemctl status caddy    <span class="cm"># Active: active (running)</span></code></pre>
+
+    <div class="trouble">
+      <div class="trouble-header">🚨 可能出错：caddy 启动后 80 端口被占用</div>
+      <div class="trouble-body">
+        <div class="label">诊断</div>
+        <p>运行 <code>sudo lsof -i :80</code>，看是什么在占用 80 端口。</p>
+        <div class="label">常见原因：apache2 默认安装了</div>
+        <p>运行 <code>sudo systemctl stop apache2 &amp;&amp; sudo systemctl disable apache2</code>，然后重启 Caddy：<code>sudo systemctl restart caddy</code>。</p>
+      </div>
+    </div>
+
+    <div class="verify">
+      <strong>✅ Part 4 安装完成校验</strong>
+      运行以下命令，全部应该有输出：<br>
+      <code>node -v</code> → <code>v22.x.x</code><br>
+      <code>pnpm -v</code> → <code>9.x.x</code><br>
+      <code>psql --version</code> → <code>16.x</code><br>
+      <code>redis-cli ping</code> → <code>PONG</code><br>
+      <code>caddy version</code> → <code>v2.x.x</code>
+    </div>
+
+    <hr>
+
+    <!-- ════════════════════════════════════
+         PART 5 · 数据库初始化
+    ════════════════════════════════════ -->
+    <h2 id="part5"><span class="part-num">PART 5</span>数据库初始化</h2>
+    <p>PostgreSQL 安装后有一个默认的 <code>postgres</code> 超级用户，但我们要为项目创建一个单独的用户和数据库，更安全。</p>
+
+    <pre><button class="copy-btn">复制</button><code><span class="cm"># 切换到 postgres 系统用户，进入 psql 命令行</span>
+sudo -u postgres psql
+
+<span class="cm"># 以下命令在 psql 里面执行（提示符是 postgres=#）</span>
+
+<span class="cm">-- 创建数据库用户（把 强密码请换成你自己的 改掉！）</span>
+CREATE USER forum WITH PASSWORD '<span class="var">强密码请换成你自己的</span>';
+
+<span class="cm">-- 创建数据库，指定 owner 是 forum 用户</span>
+CREATE DATABASE forum OWNER forum ENCODING 'UTF8' LC_COLLATE 'C' LC_CTYPE 'C' TEMPLATE template0;
+
+<span class="cm">-- 给用户授权</span>
+GRANT ALL PRIVILEGES ON DATABASE forum TO forum;
+
+<span class="cm">-- 验证</span>
+\l
+<span class="cm">-- 应该能看到名为 forum 的数据库，Owner 是 forum</span>
+
+<span class="cm">-- 退出 psql</span>
+\q</code></pre>
+
+    <div class="trouble">
+      <div class="trouble-header">🚨 可能出错：could not connect to server: No such file or directory（psql 连不上）</div>
+      <div class="trouble-body">
+        <div class="label">原因</div>
+        <p>PostgreSQL 服务没启动</p>
+        <div class="label">解决</div>
+        <p>运行 <code>sudo systemctl start postgresql</code>，然后再试。</p>
+      </div>
+    </div>
+
+    <div class="trouble">
+      <div class="trouble-header">🚨 可能出错：ERROR: database "forum" already exists</div>
+      <div class="trouble-body">
+        <div class="label">原因</div>
+        <p>之前创建过同名数据库</p>
+        <div class="label">解决</div>
+        <p>如果是全新部署，先 <code>DROP DATABASE forum;</code>，再重建。如果是迁移，不用重建，直接用现有数据库。</p>
+      </div>
+    </div>
+
+    <p>接下来给 Redis 加密码（防止服务器上其他进程随意访问）：</p>
+
+    <pre><button class="copy-btn">复制</button><code><span class="cm"># 编辑 Redis 配置文件</span>
+sudo nano /etc/redis/redis.conf
+
+<span class="cm"># 找到这一行（Ctrl+W 搜索 requirepass）：</span>
+<span class="cm"># requirepass foobared</span>
+<span class="cm"># 取消注释并改成你的密码：</span>
+requirepass <span class="var">你的Redis密码</span>
+
+<span class="cm"># 确认 bind 只监听本地（找到 bind 那行，应该是）：</span>
+bind 127.0.0.1 -::1
+
+<span class="cm"># 保存：Ctrl+O 回车，退出：Ctrl+X</span>
+
+<span class="cm"># 重启 Redis</span>
+sudo systemctl restart redis-server
+
+<span class="cm"># 验证（用密码连接）</span>
+redis-cli -a <span class="var">你的Redis密码</span> ping
+<span class="cm"># 返回 PONG 就对了</span></code></pre>
+
+    <hr>
+
+    <!-- ════════════════════════════════════
+         PART 6 · 部署代码
+    ════════════════════════════════════ -->
+    <h2 id="part6"><span class="part-num">PART 6</span>部署项目代码</h2>
+
+    <h3 id="part6-clone">6.1 把代码传到服务器</h3>
+    <p>有两种方式：用 Git（推荐）或者 scp（直接传文件夹）。</p>
+
+    <p><strong>方式 A：Git（推荐，代码更新方便）</strong></p>
+
+    <pre><button class="copy-btn">复制</button><code><span class="cm"># 在服务器上创建项目目录</span>
+sudo mkdir -p /var/www/forum
+sudo chown ubuntu:ubuntu /var/www/forum
+cd /var/www/forum
+
+<span class="cm"># 如果是私有仓库，需要先配置 SSH key 或者用 HTTPS token</span>
+<span class="cm"># ── HTTPS token 方式（简单）──</span>
+<span class="cm"># 在 GitHub 个人设置 → Developer settings → Personal access tokens 生成一个</span>
+git clone https://<span class="var">你的token</span>@github.com/<span class="var">你的用户名/仓库名</span>.git .
+
+<span class="cm"># 如果是公开仓库：</span>
+git clone https://github.com/<span class="var">你的用户名/仓库名</span>.git .</code></pre>
+
+    <p><strong>方式 B：scp 直接传文件（在你的 Mac 上执行，不是服务器上）</strong></p>
+
+    <pre><button class="copy-btn">复制</button><code><span class="cm"># 在你的 Mac 终端执行（先 cd 到项目目录的上一级）</span>
+cd ~/Documents/Codex
+
+<span class="cm"># 把整个项目目录传上去（排除 node_modules 和 .git）</span>
+rsync -avz --progress \
+  --exclude='node_modules' \
+  --exclude='.git' \
+  --exclude='dist' \
+  --exclude='.next' \
+  -e "ssh -i ~/.ssh/hezhong666.pem" \
+  ./浙工商树洞/ \
+  ubuntu@<span class="var">你的弹性IP</span>:/var/www/forum/</code></pre>
+
+    <div class="trouble">
+      <div class="trouble-header">🚨 可能出错：git clone 一直失败 / 很慢</div>
+      <div class="trouble-body">
+        <div class="label">原因</div>
+        <p>GitHub 在国内访问不稳定；香港区 EC2 访问 GitHub 一般没问题，但偶尔也会慢</p>
+        <div class="label">解决</div>
+        <p>① 等几分钟重试 ② 用 scp/rsync 方式（方式 B）直接传文件，绕过 GitHub ③ 如果实在不行，用 GitHub Actions 自动部署（进阶）</p>
+      </div>
+    </div>
+
+    <h3 id="part6-env">6.2 配置环境变量（.env 文件）</h3>
+    <p>项目根目录的 <code>apps/api/.env.example</code> 是模板，复制一份改成正式配置。</p>
+
+    <pre><button class="copy-btn">复制</button><code><span class="cm"># 进入项目目录</span>
+cd /var/www/forum
+
+<span class="cm"># 复制 env 模板</span>
+cp apps/api/.env.example apps/api/.env
+
+<span class="cm"># 用 nano 编辑</span>
+nano apps/api/.env</code></pre>
+
+    <p>参照下面的表格，把每一个值改成生产环境的值：</p>
+
+    <table>
+      <thead><tr><th>变量名</th><th>生产环境的值</th><th>怎么获取</th></tr></thead>
+      <tbody>
+        <tr><td><code>NODE_ENV</code></td><td><code>production</code></td><td>直接写死</td></tr>
+        <tr><td><code>APP_PORT</code></td><td><code>3000</code></td><td>直接写死</td></tr>
+        <tr><td><code>DATABASE_URL</code></td><td><code>postgresql://forum:你的PG密码@127.0.0.1:5432/forum?schema=public</code></td><td>Part 5 创建的用户密码</td></tr>
+        <tr><td><code>REDIS_URL</code></td><td><code>redis://:你的Redis密码@127.0.0.1:6379</code></td><td>Part 5 设置的 Redis 密码</td></tr>
+        <tr><td><code>JWT_SECRET</code></td><td>随机 64 位字符串</td><td>见下方命令</td></tr>
+        <tr><td><code>JWT_REFRESH_SECRET</code></td><td>随机 64 位字符串</td><td>见下方命令</td></tr>
+        <tr><td><code>S3_ENDPOINT</code></td><td><code>https://s3.ap-east-1.amazonaws.com</code></td><td>香港区 S3 端点</td></tr>
+        <tr><td><code>S3_FORCE_PATH_STYLE</code></td><td><code>false</code></td><td>AWS S3 用 false</td></tr>
+        <tr><td><code>AWS_REGION</code></td><td><code>ap-east-1</code></td><td>香港区</td></tr>
+        <tr><td><code>AWS_ACCESS_KEY_ID</code></td><td>你的 IAM key</td><td>Part 9 创建</td></tr>
+        <tr><td><code>AWS_SECRET_ACCESS_KEY</code></td><td>你的 IAM secret</td><td>Part 9 创建</td></tr>
+        <tr><td><code>SES_FROM_EMAIL</code></td><td><code>noreply@你的域名</code></td><td>Part 9 验证的邮箱</td></tr>
+      </tbody>
+    </table>
+
+    <pre><button class="copy-btn">复制</button><code><span class="cm"># 生成 JWT_SECRET 和 JWT_REFRESH_SECRET 的方法</span>
+openssl rand -hex 64
+<span class="cm"># 运行两次，各复制一个值分别填进去</span>
+
+<span class="cm"># nano 快捷键：
+#   Ctrl+W = 搜索
+#   Ctrl+O = 保存
+#   Ctrl+X = 退出</span></code></pre>
+
+    <p>前端也需要 env 文件：</p>
+
+    <pre><button class="copy-btn">复制</button><code><span class="cm"># Web 前端</span>
+cp apps/web/.env.example apps/web/.env.local 2>/dev/null || echo "NEXT_PUBLIC_API_URL=https://api.你的域名" > apps/web/.env.local
+
+<span class="cm"># Admin 后台</span>
+cp apps/admin/.env.example apps/admin/.env.local 2>/dev/null || echo "NEXT_PUBLIC_API_URL=https://api.你的域名" > apps/admin/.env.local
+
+<span class="cm"># 编辑 web 的 env，确认 API 地址正确</span>
+nano apps/web/.env.local</code></pre>
+
+    <h3 id="part6-migrate">6.3 安装依赖 &amp; 数据库迁移</h3>
+
+    <pre><button class="copy-btn">复制</button><code><span class="cm"># 安装所有依赖（在项目根目录）</span>
+cd /var/www/forum
+pnpm install --frozen-lockfile
+
+<span class="cm"># 生成 Prisma Client</span>
+pnpm --filter @forum/api prisma:generate
+
+<span class="cm"># 执行数据库迁移（把 schema 应用到 PostgreSQL）</span>
+pnpm --filter @forum/api prisma:migrate:deploy
+
+<span class="cm"># 执行 post-migrate SQL（索引、触发器等）</span>
+pnpm --filter @forum/api prisma:post-migrate
+
+<span class="cm"># 导入种子数据（初始版块等，可选）</span>
+pnpm --filter @forum/api db:seed</code></pre>
+
+    <div class="trouble">
+      <div class="trouble-header">🚨 可能出错：pnpm install 被系统 kill（OOM）</div>
+      <div class="trouble-body">
+        <div class="label">原因</div>
+        <p>内存不足，内核 OOM killer 把 pnpm 进程杀掉了。日志里会看到 <code>Killed</code>。</p>
+        <div class="label">解决</div>
+        <p>① 确认 Part 4.1 的 Swap 已经加好（<code>free -h</code> 看 Swap 行） ② 关掉不必要的进程（<code>sudo systemctl stop caddy</code> 等） ③ 重新运行 <code>pnpm install --frozen-lockfile</code>。</p>
+      </div>
+    </div>
+
+    <div class="trouble">
+      <div class="trouble-header">🚨 可能出错：prisma:migrate:deploy 报错 P1001 Can't reach database</div>
+      <div class="trouble-body">
+        <div class="label">原因</div>
+        <p><code>DATABASE_URL</code> 里的主机名、端口、用户名或密码写错了</p>
+        <div class="label">解决</div>
+        <p>① 检查 <code>apps/api/.env</code> 里的 <code>DATABASE_URL</code> ② 手动测试连接：<code>psql postgresql://forum:你的密码@127.0.0.1:5432/forum</code>，能进去就说明 URL 没问题。</p>
+      </div>
+    </div>
+
+    <div class="trouble">
+      <div class="trouble-header">🚨 可能出错：prisma:post-migrate 报错 relation does not exist</div>
+      <div class="trouble-body">
+        <div class="label">原因</div>
+        <p>migrate:deploy 没有完整执行，表还没建好，post-migrate.sql 里引用的表不存在</p>
+        <div class="label">解决</div>
+        <p>先确认 migrate:deploy 是否成功（没有报红色 error）。如果有报错，先修复 migrate:deploy，再跑 post-migrate。</p>
+      </div>
+    </div>
+
+    <h3 id="part6-build">6.4 构建项目</h3>
+
+    <pre><button class="copy-btn">复制</button><code><span class="cm"># 限制 Node 最大内存 3GB（防止 Next.js 编译 OOM）</span>
+export NODE_OPTIONS="--max-old-space-size=3072"
+
+<span class="cm"># 构建 API（NestJS）</span>
+pnpm --filter @forum/api build
+
+<span class="cm"># 构建 Web 前端</span>
+pnpm --filter @forum/web build
+
+<span class="cm"># 构建 Admin 后台</span>
+pnpm --filter @forum/admin build</code></pre>
+
+    <div class="box info">
+      <div class="box-icon">⏱️</div>
+      <div class="box-body">
+        <strong>构建时间参考</strong>
+        <p>API 约 30 秒，Web 和 Admin 各约 2-5 分钟（t3.small 上）。期间 CPU 会跑满，属于正常现象。</p>
+      </div>
+    </div>
+
+    <div class="trouble">
+      <div class="trouble-header">🚨 可能出错：Next.js 构建时内存不足（显示 Killed 或 JavaScript heap out of memory）</div>
+      <div class="trouble-body">
+        <div class="label">原因</div>
+        <p>Next.js 编译需要大量内存，2 GB + 2 GB Swap 勉强够用</p>
+        <div class="label">解决</div>
+        <p>① 确认 Swap 已启用（<code>free -h</code>）② 关掉 PostgreSQL 和 Redis（<code>sudo systemctl stop postgresql redis-server</code>），把内存让出来，构建完再启动 ③ 如果实在不行，在本地构建好再把 <code>.next</code> 目录传上去（rsync）。</p>
+      </div>
+    </div>
+
+    <div class="trouble">
+      <div class="trouble-header">🚨 可能出错：Cannot find module '@forum/api' 或 module not found</div>
+      <div class="trouble-body">
+        <div class="label">原因</div>
+        <p>pnpm workspace 链接没有建好，依赖安装不完整</p>
+        <div class="label">解决</div>
+        <p>删掉 <code>node_modules</code> 重新安装：<code>rm -rf node_modules apps/*/node_modules &amp;&amp; pnpm install</code>。</p>
+      </div>
+    </div>
+
+    <hr>
+
+    <!-- ════════════════════════════════════
+         PART 7 · PM2
+    ════════════════════════════════════ -->
+    <h2 id="part7"><span class="part-num">PART 7</span>PM2 进程守护</h2>
+    <p>PM2 负责：① 让 Node 程序在后台运行（不是挂在终端上） ② 程序崩溃自动重启 ③ 服务器重启后自动拉起所有服务。</p>
+
+    <pre><button class="copy-btn">复制</button><code><span class="cm"># 全局安装 PM2</span>
+npm install -g pm2
+
+<span class="cm"># 验证</span>
+pm2 -v</code></pre>
+
+    <p>在项目根目录创建 PM2 配置文件：</p>
+
+    <pre><button class="copy-btn">复制</button><code><span class="cm"># 在服务器上执行</span>
+cat > /var/www/forum/ecosystem.config.js << 'EOF'
+module.exports = {
+  apps: [
+    {
+      name: 'forum-api',
+      cwd: '/var/www/forum/apps/api',
+      script: 'node',
+      args: 'dist/main.js',
+      instances: 1,
+      autorestart: true,
+      watch: false,
+      max_memory_restart: '512M',
+      env: {
+        NODE_ENV: 'production',
+      },
+    },
+    {
+      name: 'forum-web',
+      cwd: '/var/www/forum/apps/web',
+      script: 'node',
+      args: 'node_modules/.bin/next start -p 3001',
+      instances: 1,
+      autorestart: true,
+      watch: false,
+      max_memory_restart: '400M',
+      env: {
+        NODE_ENV: 'production',
+        PORT: '3001',
+      },
+    },
+    {
+      name: 'forum-admin',
+      cwd: '/var/www/forum/apps/admin',
+      script: 'node',
+      args: 'node_modules/.bin/next start -p 3002',
+      instances: 1,
+      autorestart: true,
+      watch: false,
+      max_memory_restart: '300M',
+      env: {
+        NODE_ENV: 'production',
+        PORT: '3002',
+      },
+    },
+  ],
+};
+EOF</code></pre>
+
+    <pre><button class="copy-btn">复制</button><code><span class="cm"># 启动所有服务</span>
+cd /var/www/forum
+pm2 start ecosystem.config.js
+
+<span class="cm"># 查看状态（所有 status 应该是 online）</span>
+pm2 status
+
+<span class="cm"># ⚠️ 关键步骤：设置开机自启</span>
+<span class="cm"># 不执行这步，服务器重启后服务就全没了！</span>
+pm2 startup
+<span class="cm"># 这条命令会输出一行 sudo ... 的命令，复制下来执行它！</span>
+<span class="cm"># 例如：sudo env PATH=$PATH:/home/ubuntu/.nvm/... pm2 startup systemd -u ubuntu --hp /home/ubuntu</span>
+
+<span class="cm"># 保存当前进程列表（以后重启自动还原）</span>
+pm2 save</code></pre>
+
+    <div class="box warn">
+      <div class="box-icon">⚠️</div>
+      <div class="box-body">
+        <strong><code>pm2 startup</code> 一定要执行 <code>pm2 save</code>！</strong>
+        <p>startup 只是注册开机自启的机制，save 才是保存当前进程列表。没有 save，重启后 PM2 不知道要启动哪些服务。</p>
+      </div>
+    </div>
+
+    <div class="trouble">
+      <div class="trouble-header">🚨 可能出错：pm2 status 显示 errored（红色）</div>
+      <div class="trouble-body">
+        <div class="label">诊断</div>
+        <p>运行 <code>pm2 logs forum-api --lines 50</code>（或 forum-web / forum-admin）查看错误日志。</p>
+        <div class="label">常见原因：.env 读取不到</div>
+        <p>PM2 默认从 <code>cwd</code>（工作目录）读取 .env。确认 <code>apps/api/.env</code> 文件存在且有内容。</p>
+        <div class="label">常见原因：dist/main.js 不存在</div>
+        <p>说明 build 没有成功。回到 Part 6.4 重新构建。</p>
+        <div class="label">常见原因：端口被占用</div>
+        <p>运行 <code>sudo lsof -i :3000</code>，查看是什么占用了 3000 端口，kill 掉或修改 APP_PORT。</p>
+      </div>
+    </div>
+
+    <p>常用 PM2 命令备忘：</p>
+    <pre><button class="copy-btn">复制</button><code>pm2 status              <span class="cm"># 查看所有服务状态</span>
+pm2 logs                <span class="cm"># 实时查看所有日志（Ctrl+C 退出）</span>
+pm2 logs forum-api      <span class="cm"># 只看 API 的日志</span>
+pm2 restart forum-api   <span class="cm"># 重启 API</span>
+pm2 restart all         <span class="cm"># 重启所有</span>
+pm2 stop all            <span class="cm"># 停止所有</span>
+pm2 monit               <span class="cm"># 图形化监控面板（CPU/内存实时）</span>
+pm2 flush               <span class="cm"># 清空日志文件</span></code></pre>
+
+    <hr>
+
+    <!-- ════════════════════════════════════
+         PART 8 · Caddy
+    ════════════════════════════════════ -->
+    <h2 id="part8"><span class="part-num">PART 8</span>Caddy 反向代理 + 自动 HTTPS</h2>
+
+    <div class="box info">
+      <div class="box-icon">💡</div>
+      <div class="box-body">
+        <strong>做这一步之前，先把域名解析好</strong>
+        <p>在你的域名注册商（阿里云、腾讯云、Cloudflare 等）添加以下 A 记录，指向你的弹性 IP：</p>
+      </div>
+    </div>
+
+    <table>
+      <thead><tr><th>记录类型</th><th>主机记录（子域名）</th><th>记录值（弹性 IP）</th><th>TTL</th></tr></thead>
+      <tbody>
+        <tr><td>A</td><td><code>forum</code>（或 <code>@</code>）</td><td><code>你的弹性IP</code></td><td>5分钟</td></tr>
+        <tr><td>A</td><td><code>api</code></td><td><code>你的弹性IP</code></td><td>5分钟</td></tr>
+        <tr><td>A</td><td><code>admin</code></td><td><code>你的弹性IP</code></td><td>5分钟</td></tr>
+      </tbody>
+    </table>
+
+    <p>验证 DNS 是否生效：</p>
+    <pre><button class="copy-btn">复制</button><code><span class="cm"># 在服务器上运行</span>
+dig +short api.你的域名.hk
+<span class="cm"># 应该返回你的弹性 IP</span>
+
+<span class="cm"># 如果 dig 命令不存在：</span>
+sudo apt install -y dnsutils
+nslookup api.你的域名.hk</code></pre>
+
+    <p>DNS 生效（通常 5-10 分钟，最长 48 小时）后，配置 Caddyfile：</p>
+
+    <pre><button class="copy-btn">复制</button><code><span class="cm"># 备份默认配置</span>
+sudo cp /etc/caddy/Caddyfile /etc/caddy/Caddyfile.bak
+
+<span class="cm"># 写入新配置（把 你的域名.hk 替换成你的真实域名）</span>
+sudo tee /etc/caddy/Caddyfile > /dev/null << 'EOF'
+# 把 api 子域名的流量转发给 NestJS API（3000 端口）
+api.你的域名.hk {
+    reverse_proxy localhost:3000
+    encode gzip
+}
+
+# 把主域名的流量转发给 Web 前端（3001 端口）
+forum.你的域名.hk {
+    reverse_proxy localhost:3001
+    encode gzip
+}
+
+# 把 admin 子域名的流量转发给管理后台（3002 端口）
+admin.你的域名.hk {
+    reverse_proxy localhost:3002
+    encode gzip
+}
+EOF
+
+<span class="cm"># 检查配置语法是否正确</span>
+caddy validate --config /etc/caddy/Caddyfile
+
+<span class="cm"># 重新加载 Caddy（不中断服务）</span>
+sudo systemctl reload caddy
+
+<span class="cm"># 查看 Caddy 日志</span>
+sudo journalctl -u caddy -f</code></pre>
+
+    <p>Caddy 会<strong>自动</strong>向 Let's Encrypt 申请 HTTPS 证书，无需任何额外操作。</p>
+
+    <div class="trouble">
+      <div class="trouble-header">🚨 可能出错：Caddy 日志显示 certificate must be renewed（或 TLS handshake error）</div>
+      <div class="trouble-body">
+        <div class="label">原因</div>
+        <p>DNS 还没有生效，Caddy 申请证书时域名解析不到这台服务器</p>
+        <div class="label">解决</div>
+        <p>① 用 <code>dig +short 你的域名</code> 确认 DNS 已经指向正确 IP ② DNS 生效后，Caddy 会自动重试申请证书，通常几分钟内自动解决。</p>
+      </div>
+    </div>
+
+    <div class="trouble">
+      <div class="trouble-header">🚨 可能出错：caddy validate 报 unrecognized directive</div>
+      <div class="trouble-body">
+        <div class="label">原因</div>
+        <p>Caddyfile 语法错误，或者复制时引号变成了中文引号</p>
+        <div class="label">解决</div>
+        <p>仔细检查 Caddyfile，确保所有引号和括号都是英文半角字符。用 <code>nano /etc/caddy/Caddyfile</code> 检查。</p>
+      </div>
+    </div>
+
+    <div class="trouble">
+      <div class="trouble-header">🚨 可能出错：浏览器提示「ERR_TOO_MANY_REDIRECTS」</div>
+      <div class="trouble-body">
+        <div class="label">原因</div>
+        <p>前端（Next.js）或 API 里有强制 HTTP→HTTPS 的重定向，和 Caddy 的重定向冲突了</p>
+        <div class="label">解决</div>
+        <p>检查 Next.js 的 <code>next.config.ts</code> 里是否有 redirect 配置；确保 NestJS 里没有手动重定向到 HTTPS；Caddy 本身会自动处理 HTTPS，不要再叠加一层。</p>
+      </div>
+    </div>
+
+    <div class="verify">
+      <strong>✅ Caddy 配置成功验证</strong>
+      打开浏览器访问 <code>https://api.你的域名.hk/health</code>，<br>
+      应该看到 API 返回的 JSON（<code>{"status":"ok"}</code> 类似内容），且浏览器地址栏有🔒绿锁。
+    </div>
+
+    <hr>
+
+    <!-- ════════════════════════════════════
+         PART 9 · SES 邮件
+    ════════════════════════════════════ -->
+    <h2 id="part9"><span class="part-num">PART 9</span>AWS SES 邮件发送配置</h2>
+    <p>SES（Simple Email Service）用于发送注册验证码邮件。</p>
+
+    <ol class="steps">
+      <li><div class="content">
+        <p>在 AWS 控制台确认你还在<strong>香港区（ap-east-1）</strong>。搜索「SES」→ 进入。</p>
+      </div></li>
+      <li><div class="content">
+        <p><strong>验证发件人邮箱或域名</strong>：左侧菜单「已验证的身份」→「创建身份」。</p>
+        <ul style="margin-left:1.5rem;margin-top:0.5rem;line-height:2">
+          <li>选「电子邮件地址」，填入发件邮箱（如 <code>noreply@你的域名.hk</code>），发邮件到这个地址，点击验证链接。</li>
+          <li>或者选「域」，验证整个域名（需要在 DNS 添加 TXT 记录）。域验证后可以用这个域名下的任意邮箱发信。</li>
+        </ul>
+      </div></li>
+      <li><div class="content">
+        <p><strong>创建 IAM 用户</strong>（程序用的密钥）：在 AWS 控制台搜索「IAM」，进入。</p>
+        <p>「用户」→「创建用户」→ 名称：<code>forum-api-user</code> →「仅具有编程访问权限」。</p>
+        <p>权限：「直接附加策略」→ 搜索 <code>AmazonSESFullAccess</code> 和 <code>AmazonS3FullAccess</code>，勾选两个（后者用于图片上传）。</p>
+        <p>完成后显示 <strong>Access key ID</strong> 和 <strong>Secret access key</strong>，立刻复制保存，关闭后不能再查看。</p>
+      </div></li>
+      <li><div class="content">
+        <p>把这两个值填入 <code>apps/api/.env</code>：</p>
+        <pre style="margin:0.5rem 0"><button class="copy-btn">复制</button><code>AWS_ACCESS_KEY_ID=AKIA...你的key
+AWS_SECRET_ACCESS_KEY=...你的secret
+AWS_REGION=ap-east-1
+SES_FROM_EMAIL=noreply@你的域名.hk
+
+<span class="cm"># SMTP 配置（使用 SES SMTP 方式）</span>
+SMTP_HOST=email-smtp.ap-east-1.amazonaws.com
+SMTP_PORT=587
+SMTP_USER=<span class="cm"># SES SMTP 用户名（在 SES 控制台生成，不是 IAM key！）</span>
+SMTP_PASS=<span class="cm"># SES SMTP 密码</span></code></pre>
+      </div></li>
+      <li><div class="content">
+        <p>重启 API：<code>pm2 restart forum-api</code></p>
+      </div></li>
+    </ol>
+
+    <div class="trouble">
+      <div class="trouble-header">🚨 可能出错：发送邮件报 MessageRejected: Email address is not verified</div>
+      <div class="trouble-body">
+        <div class="label">原因</div>
+        <p>SES 默认在「沙箱模式」，只能发送给<strong>已验证的邮箱地址</strong>。这意味着你只能测试，不能给真实用户发。</p>
+        <div class="label">解决</div>
+        <p>申请退出沙箱（生产访问）：SES 控制台 → 「账户控制面板」→「申请生产访问权限」，填写用途说明（校园论坛，发注册验证码，预计发送量）。通常 1-3 个工作日审批通过。</p>
+      </div>
+    </div>
+
+    <div class="trouble">
+      <div class="trouble-header">🚨 可能出错：SES SMTP 连接超时 / 连不上 port 587</div>
+      <div class="trouble-body">
+        <div class="label">原因</div>
+        <p>EC2 出站流量默认封锁了 25 端口，但 587 应该是通的。如果 587 也不通，可能是 AWS 账号层面的限制。</p>
+        <div class="label">解决</div>
+        <p>① 换用 465 端口（SSL）② 或者在 AWS Support 申请解开 25 端口限制 ③ 测试：<code>telnet email-smtp.ap-east-1.amazonaws.com 587</code>，能连上就显示 「Connected」。</p>
+      </div>
+    </div>
+
+    <hr>
+
+    <!-- ════════════════════════════════════
+         PART 10 · 最终验证
+    ════════════════════════════════════ -->
+    <h2 id="part10"><span class="part-num">PART 10</span>最终验证</h2>
+
+    <h3>10.1 服务基础检查</h3>
+    <pre><button class="copy-btn">复制</button><code><span class="cm"># 所有服务应该在线</span>
+pm2 status
+
+<span class="cm"># PostgreSQL 和 Redis 应该运行中</span>
+sudo systemctl status postgresql redis-server
+
+<span class="cm"># 端口监听检查</span>
+sudo ss -tlnp | grep -E '3000|3001|3002|5432|6379|80|443'
+<span class="cm"># 应该看到 3000/3001/3002 被 node 监听，5432 被 postgres，6379 被 redis</span></code></pre>
+
+    <h3>10.2 API 接口测试</h3>
+    <pre><button class="copy-btn">复制</button><code><span class="cm"># 健康检查</span>
+curl -s https://api.你的域名.hk/health | python3 -m json.tool
+
+<span class="cm"># 测试注册（把邮箱改成 @pop.zjgsu.edu.cn 的真实邮箱）</span>
+curl -X POST https://api.你的域名.hk/auth/send-otp \
+  -H "Content-Type: application/json" \
+  -d '{"email": "你的学号@pop.zjgsu.edu.cn"}'
+<span class="cm"># 应该返回 {"message": "验证码已发送"}</span>
+
+<span class="cm"># 检查 API 日志</span>
+pm2 logs forum-api --lines 30</code></pre>
+
+    <h3>10.3 前端页面测试</h3>
+    <p>在浏览器里访问：</p>
+    <ul style="margin-left:1.5rem;line-height:2.5">
+      <li>论坛首页：<code>https://forum.你的域名.hk</code> → 应该加载出完整页面，浏览器有🔒</li>
+      <li>API 文档：<code>https://api.你的域名.hk/docs</code>（如果开启了 Swagger）</li>
+      <li>管理后台：<code>https://admin.你的域名.hk</code></li>
+    </ul>
+
+    <div class="trouble">
+      <div class="trouble-header">🚨 可能出错：前端页面空白 / 网络错误</div>
+      <div class="trouble-body">
+        <div class="label">诊断步骤</div>
+        <p>① 打开浏览器 DevTools（F12）→ Console 看报错信息 ② 看 Network 标签，找到失败的请求 ③ 确认 API 地址（<code>NEXT_PUBLIC_API_URL</code>）是否指向正确的 URL ④ <code>pm2 logs forum-web --lines 50</code> 看服务端报错。</p>
+        <div class="label">常见原因：API 跨域（CORS）错误</div>
+        <p>在 NestJS 的 <code>main.ts</code> 里确认 <code>app.enableCors()</code> 配置的 <code>origin</code> 包含了你的前端域名。</p>
+      </div>
+    </div>
+
+    <div class="trouble">
+      <div class="trouble-header">🚨 可能出错：502 Bad Gateway</div>
+      <div class="trouble-body">
+        <div class="label">原因</div>
+        <p>Caddy 找不到对应的 Node 进程（3000/3001/3002 端口没有监听）</p>
+        <div class="label">解决</div>
+        <p>① <code>pm2 status</code> 确认服务是 online ② <code>curl http://localhost:3000/health</code> 在服务器本地测试 API 是否正常 ③ 如果本地能访问但通过域名不行，说明是 Caddy 配置问题。</p>
+      </div>
+    </div>
+
+    <hr>
+
+    <!-- ════════════════════════════════════
+         PART 11 · 错误排查速查
+    ════════════════════════════════════ -->
+    <h2 id="part11"><span class="part-num">PART 11</span>错误排查速查表</h2>
+    <p>遇到问题，先找症状，再按步骤排查。</p>
+
+    <table>
+      <thead><tr><th>症状</th><th>最快诊断命令</th><th>最可能的原因</th></tr></thead>
+      <tbody>
+        <tr><td>SSH 连不上（timeout）</td><td>在 AWS 控制台检查安全组 22 端口</td><td>IP 白名单不包含你的当前 IP</td></tr>
+        <tr><td>网站显示 502</td><td><code>pm2 status</code></td><td>Node 进程挂了，<code>pm2 logs</code> 看错误</td></tr>
+        <tr><td>网站显示 504</td><td><code>sudo systemctl status caddy</code></td><td>Caddy 没在运行或配置有误</td></tr>
+        <tr><td>API 数据库报错</td><td><code>pm2 logs forum-api</code></td><td>DATABASE_URL 错误或 PG 未启动</td></tr>
+        <tr><td>Redis 连接失败</td><td><code>redis-cli -a 密码 ping</code></td><td>密码不对或 Redis 未启动</td></tr>
+        <tr><td>HTTPS 证书错误</td><td><code>sudo journalctl -u caddy -n 50</code></td><td>DNS 没生效或 80 端口被占用</td></tr>
+        <tr><td>服务器重启后服务没了</td><td><code>pm2 list</code></td><td>没执行 <code>pm2 startup</code> + <code>pm2 save</code></td></tr>
+        <tr><td>磁盘满了</td><td><code>df -h</code></td><td>日志太多；扩容 EBS 或清日志</td></tr>
+        <tr><td>内存不足</td><td><code>free -h</code></td><td>Node 进程泄漏；<code>pm2 restart all</code></td></tr>
+        <tr><td>邮件发不出去</td><td><code>pm2 logs forum-api | grep mail</code></td><td>SES 在沙箱或 SMTP 配置错误</td></tr>
+        <tr><td>图片上传失败</td><td><code>pm2 logs forum-api | grep S3</code></td><td>IAM 权限不足或 S3 bucket 未创建</td></tr>
+        <tr><td>前端空白页</td><td>浏览器 DevTools → Console</td><td>NEXT_PUBLIC_API_URL 写错或 CORS 问题</td></tr>
+      </tbody>
+    </table>
+
+    <h3>通用诊断命令集</h3>
+
+    <pre><button class="copy-btn">复制</button><code><span class="cm">## 查看所有服务状态</span>
+pm2 status
+sudo systemctl status caddy postgresql redis-server
+
+<span class="cm">## 实时查看日志</span>
+pm2 logs               <span class="cm"># 所有 Node 服务</span>
+sudo journalctl -u caddy -f     <span class="cm"># Caddy</span>
+sudo journalctl -u postgresql -f <span class="cm"># PostgreSQL</span>
+
+<span class="cm">## 检查端口占用</span>
+sudo ss -tlnp
+
+<span class="cm">## 检查内存和磁盘</span>
+free -h
+df -h
+
+<span class="cm">## 检查 CPU 占用（q 退出）</span>
+top
+
+<span class="cm">## 检查最近系统日志（OOM、磁盘错误等）</span>
+sudo dmesg | tail -30</code></pre>
+
+    <hr>
+
+    <!-- ════════════════════════════════════
+         PART 12 · 日常维护
+    ════════════════════════════════════ -->
+    <h2 id="part12"><span class="part-num">PART 12</span>日常维护 &amp; 备份</h2>
+
+    <h3>12.1 更新代码（发新版本）</h3>
+
+    <pre><button class="copy-btn">复制</button><code>cd /var/www/forum
+
+<span class="cm"># 1. 拉取最新代码（Git 方式）</span>
+git pull origin main
+
+<span class="cm"># 2. 安装新依赖（如果 package.json 有变化）</span>
+pnpm install --frozen-lockfile
+
+<span class="cm"># 3. 执行数据库迁移（如果 Prisma schema 有变化）</span>
+pnpm --filter @forum/api prisma:migrate:deploy
+pnpm --filter @forum/api prisma:post-migrate
+
+<span class="cm"># 4. 重新构建（设置内存限制）</span>
+export NODE_OPTIONS="--max-old-space-size=3072"
+pnpm --filter @forum/api build
+pnpm --filter @forum/web build
+pnpm --filter @forum/admin build
+
+<span class="cm"># 5. 重启服务（zero-downtime restart）</span>
+pm2 reload all</code></pre>
+
+    <h3>12.2 数据库定时备份</h3>
+
+    <pre><button class="copy-btn">复制</button><code><span class="cm"># 创建备份目录</span>
+sudo mkdir -p /var/backups/forum-db
+sudo chown ubuntu:ubuntu /var/backups/forum-db
+
+<span class="cm"># 手动备份一次（测试）</span>
+pg_dump -U forum -d forum -h 127.0.0.1 -Fc > /var/backups/forum-db/forum_$(date +%Y%m%d_%H%M%S).dump
+
+<span class="cm"># 设置每天凌晨 3 点自动备份（crontab）</span>
+crontab -e
+<span class="cm"># 在文件末尾添加这一行：</span>
+0 3 * * * pg_dump -U forum -d forum -h 127.0.0.1 -Fc > /var/backups/forum-db/forum_$(date +\%Y\%m\%d).dump && find /var/backups/forum-db -name "*.dump" -mtime +7 -delete</code></pre>
+
+    <h3>12.3 监控磁盘和内存</h3>
+
+    <pre><button class="copy-btn">复制</button><code><span class="cm"># 设置磁盘使用超过 85% 时发邮件报警（可选）</span>
+crontab -e
+<span class="cm"># 加这行（注意替换你的邮箱）：</span>
+*/30 * * * * df -h / | awk 'NR==2 {gsub(/%/,""); if ($5 > 85) system("echo \"Disk usage: "$5"%\" | mail -s \"[警告] 服务器磁盘快满了\" 你的邮箱@qq.com")}'
+
+<span class="cm"># PM2 图形化监控（Ctrl+C 退出）</span>
+pm2 monit
+
+<span class="cm"># 清理 PM2 日志（防止日志撑满磁盘）</span>
+pm2 install pm2-logrotate           <span class="cm"># 装日志自动轮转插件</span>
+pm2 set pm2-logrotate:max_size 50M  <span class="cm"># 单个日志最大 50MB</span>
+pm2 set pm2-logrotate:retain 5      <span class="cm"># 保留最近 5 个日志文件</span></code></pre>
+
+    <h3>12.4 SSH 安全加固（可选但推荐）</h3>
+
+    <pre><button class="copy-btn">复制</button><code><span class="cm"># 禁用密码登录（只允许密钥登录，防暴力破解）</span>
+sudo nano /etc/ssh/sshd_config
+
+<span class="cm"># 确认/修改这两行：</span>
+PasswordAuthentication no
+PubkeyAuthentication yes
+
+<span class="cm"># 重启 SSH 服务（不会断开当前连接）</span>
+sudo systemctl restart sshd
+
+<span class="cm"># 安装 fail2ban（自动封禁多次失败登录的 IP）</span>
+sudo apt install -y fail2ban
+sudo systemctl enable fail2ban
+sudo systemctl start fail2ban</code></pre>
+
+    <hr>
+
+    <!-- 结语 -->
+    <div class="box ok">
+      <div class="box-icon">🎉</div>
+      <div class="box-body">
+        <strong>部署完成！</strong>
+        <p>整个流程走完，你现在有：一台香港 EC2 服务器（固定 IP、自动 HTTPS）、PostgreSQL 16 数据库、Redis 7 缓存、PM2 守护的三个 Node 服务（API + Web + Admin），以及通过 Caddy 代理的三个子域名。</p>
+        <p>后续如果要升级服务器规格（t3.small → t3.medium），只需要在 EC2 控制台「停止实例 → 更改实例类型 → 启动」，弹性 IP 保持不变，服务重启后 PM2 自动拉起所有进程，最短停机时间约 1-2 分钟。</p>
+      </div>
+    </div>
+
+    <p style="color:var(--text-dim);font-size:13px;text-align:center;margin-top:3rem;padding-top:2rem;border-top:1px solid var(--border)">
+      浙工商树洞 · EC2 菜鸟部署教程 · 有问题看 <code>pm2 logs</code> 和 <code>sudo journalctl -u caddy</code>，90% 的问题都在里面
+    </p>
+
+  </div><!-- /.main -->
+
+  <a href="#" class="totop" title="回顶部">↑</a>
+
+  <script>
+    // 复制按钮
+    document.querySelectorAll('.copy-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const code = btn.parentElement.querySelector('code').innerText;
+        navigator.clipboard.writeText(code).then(() => {
+          btn.textContent = '已复制';
+          btn.classList.add('copied');
+          setTimeout(() => { btn.textContent = '复制'; btn.classList.remove('copied'); }, 2000);
+        });
+      });
+    });
+
+    // 滚动高亮侧边导航
+    const headings = document.querySelectorAll('h2[id], h3[id]');
+    const links = document.querySelectorAll('.sidebar a[href^="#"]');
+    const obs = new IntersectionObserver(entries => {
+      entries.forEach(e => {
+        if (e.isIntersecting) {
+          links.forEach(l => l.classList.remove('active'));
+          const a = document.querySelector(`.sidebar a[href="#${e.target.id}"]`);
+          if (a) { a.classList.add('active'); a.scrollIntoView({ block: 'nearest' }); }
+        }
+      });
+    }, { rootMargin: '-10% 0px -75% 0px' });
+    headings.forEach(h => obs.observe(h));
+  </script>
+</body>
+</html>

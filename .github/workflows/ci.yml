@@ -1,0 +1,119 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint-and-typecheck:
+    name: Lint + Typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @forum/api prisma:generate
+      - run: pnpm format:check
+      - run: pnpm lint:check
+      - run: pnpm typecheck
+
+  test-api:
+    name: API tests
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: forum_test
+          POSTGRES_USER: forum
+          POSTGRES_PASSWORD: forum_test_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U forum -d forum_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      NODE_ENV: test
+      APP_PORT: 3000
+      APP_HOST: 0.0.0.0
+      APP_BASE_URL: http://localhost:3000
+      FRONTEND_ORIGIN: http://localhost:3001
+      ALLOWED_EMAIL_DOMAIN: pop.zjgsu.edu.cn
+      DATABASE_URL: postgresql://forum:forum_test_password@localhost:5432/forum_test?schema=public
+      REDIS_URL: redis://localhost:6379
+      JWT_ACCESS_SECRET: ${{ secrets.CI_JWT_ACCESS_SECRET || 'ci_fake_jwt_secret_at_least_32_chars_long' }}
+      ANON_SECRET: ${{ secrets.CI_ANON_SECRET || 'ci_fake_anon_secret_at_least_32_chars_long' }}
+      AWS_REGION: ap-east-1
+      AWS_ACCESS_KEY_ID: ci-key
+      AWS_SECRET_ACCESS_KEY: ci-secret
+      S3_UPLOADS_BUCKET: ci-uploads
+      S3_AVATARS_BUCKET: ci-avatars
+      CDN_BASE_URL: http://localhost:9000
+      MAIL_DRIVER: smtp
+      MAIL_FROM: no-reply@forum.local
+      SMTP_HOST: localhost
+      SMTP_PORT: 1025
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @forum/api prisma:generate
+      - run: pnpm --filter @forum/api prisma:migrate:deploy
+      - run: pnpm --filter @forum/api prisma:post-migrate
+      - run: pnpm --filter @forum/api test
+
+  build-web:
+    name: Web build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @forum/web build

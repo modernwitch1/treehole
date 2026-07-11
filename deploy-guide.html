@@ -1,0 +1,1330 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>浙工商树洞 - AWS EC2 部署教程</title>
+    <style>
+      :root {
+        --bg: #0f1117;
+        --surface: #1a1d27;
+        --border: #2a2d3a;
+        --text: #e1e4ed;
+        --text-dim: #8b8fa3;
+        --accent: #f59e0b;
+        --accent-bg: rgba(245, 158, 11, 0.1);
+        --code-bg: #13151e;
+        --green: #34d399;
+        --red: #f87171;
+        --blue: #60a5fa;
+        --purple: #a78bfa;
+      }
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      body {
+        font-family:
+          -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Noto Sans SC', sans-serif;
+        background: var(--bg);
+        color: var(--text);
+        line-height: 1.7;
+        padding: 2rem 1rem;
+      }
+      .container {
+        max-width: 880px;
+        margin: 0 auto;
+      }
+      h1 {
+        font-size: 2rem;
+        margin-bottom: 0.5rem;
+      }
+      h1 small {
+        font-size: 1rem;
+        color: var(--text-dim);
+        font-weight: 400;
+        display: block;
+        margin-top: 0.25rem;
+      }
+      h2 {
+        font-size: 1.35rem;
+        margin: 2.5rem 0 1rem;
+        padding-bottom: 0.4rem;
+        border-bottom: 1px solid var(--border);
+      }
+      h3 {
+        font-size: 1.1rem;
+        margin: 1.5rem 0 0.75rem;
+      }
+      p,
+      li {
+        color: var(--text-dim);
+      }
+      a {
+        color: var(--accent);
+      }
+      ul,
+      ol {
+        padding-left: 1.25rem;
+        margin: 0.5rem 0;
+      }
+      li {
+        margin: 0.3rem 0;
+      }
+
+      .callout {
+        padding: 1rem 1.25rem;
+        border-radius: 8px;
+        margin: 1rem 0;
+        border-left: 4px solid;
+        font-size: 0.92rem;
+      }
+      .callout.warn {
+        background: rgba(245, 158, 11, 0.08);
+        border-color: var(--accent);
+      }
+      .callout.info {
+        background: rgba(96, 165, 250, 0.08);
+        border-color: var(--blue);
+      }
+      .callout.danger {
+        background: rgba(248, 113, 113, 0.08);
+        border-color: var(--red);
+      }
+      .callout.success {
+        background: rgba(52, 211, 153, 0.08);
+        border-color: var(--green);
+      }
+      .callout.tip {
+        background: rgba(167, 139, 250, 0.08);
+        border-color: var(--purple);
+      }
+      .callout strong {
+        color: var(--text);
+      }
+
+      pre {
+        background: var(--code-bg);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 1rem 1.25rem;
+        overflow-x: auto;
+        font-size: 0.85rem;
+        font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+        line-height: 1.55;
+        margin: 0.75rem 0;
+        tab-size: 2;
+      }
+      code {
+        background: var(--code-bg);
+        padding: 0.15em 0.4em;
+        border-radius: 4px;
+        font-size: 0.85em;
+        font-family: 'JetBrains Mono', 'SF Mono', monospace;
+      }
+      pre code {
+        background: none;
+        padding: 0;
+        border-radius: 0;
+      }
+      .hl {
+        color: var(--accent);
+      }
+      .cm {
+        color: #5c6370;
+      }
+
+      .toc {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 1.25rem 1.5rem;
+        margin: 1.5rem 0;
+      }
+      .toc h3 {
+        margin: 0 0 0.75rem;
+      }
+      .toc ol {
+        margin: 0;
+      }
+      .toc a {
+        text-decoration: none;
+        color: var(--text-dim);
+      }
+      .toc a:hover {
+        color: var(--accent);
+      }
+
+      kbd {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 4px;
+        padding: 0.1em 0.4em;
+        font-size: 0.85em;
+        font-family: inherit;
+      }
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        margin: 0.75rem 0;
+        font-size: 0.9rem;
+      }
+      th,
+      td {
+        text-align: left;
+        padding: 0.5rem 0.75rem;
+        border: 1px solid var(--border);
+      }
+      th {
+        background: var(--surface);
+        color: var(--text);
+        font-weight: 600;
+      }
+      td {
+        color: var(--text-dim);
+      }
+
+      hr {
+        border: none;
+        border-top: 1px solid var(--border);
+        margin: 2rem 0;
+      }
+
+      @media (max-width: 600px) {
+        body {
+          padding: 1rem 0.75rem;
+        }
+        h1 {
+          font-size: 1.5rem;
+        }
+        pre {
+          font-size: 0.78rem;
+          padding: 0.75rem 1rem;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h1>
+        浙工商树洞 · AWS EC2 部署指南<small>面向小白的完整配置教程 · 最后更新: 2026-05</small>
+      </h1>
+
+      <div class="toc">
+        <h3>目录</h3>
+        <ol>
+          <li><a href="#overview">项目概览</a></li>
+          <li><a href="#ec2-spec">EC2 服务器规格怎么选</a></li>
+          <li><a href="#prepare">本地准备工作</a></li>
+          <li><a href="#launch">创建 EC2 实例</a></li>
+          <li><a href="#ssh">SSH 连接实例</a></li>
+          <li><a href="#deps">安装运行环境</a></li>
+          <li><a href="#services">安装 PostgreSQL &amp; Redis</a></li>
+          <li><a href="#deploy">部署项目代码</a></li>
+          <li><a href="#config">配置环境变量</a></li>
+          <li><a href="#build">构建 &amp; 启动</a></li>
+          <li><a href="#nginx">Nginx 反向代理 + 域名</a></li>
+          <li><a href="#dns-setup">阿里云域名 DNS 配置（unidating.top → AWS EC2）</a></li>
+          <li><a href="#ssl">SSL 证书 (HTTPS)</a></li>
+          <li><a href="#email">配置邮箱验证码发送（AWS SES）</a></li>
+          <li><a href="#pm2">PM2 进程守护</a></li>
+          <li><a href="#verify">验证部署</a></li>
+          <li><a href="#faq">常见问题</a></li>
+        </ol>
+      </div>
+
+      <!-- ============================================================ -->
+      <h2 id="overview">1. 项目概览</h2>
+      <!-- ============================================================ -->
+      <p><strong>浙工商树洞</strong> 是 Reddit 风格的校园匿名论坛，由三个子应用组成：</p>
+      <table>
+        <tr>
+          <th>应用</th>
+          <th>技术栈</th>
+          <th>端口</th>
+          <th>说明</th>
+        </tr>
+        <tr>
+          <td>API</td>
+          <td>NestJS + Prisma + PostgreSQL</td>
+          <td>3000</td>
+          <td>后端 REST API（已实现注册 / 审批 / 健康检查）</td>
+        </tr>
+        <tr>
+          <td>Web</td>
+          <td>Next.js 15</td>
+          <td>3001</td>
+          <td>论坛前端（含注册 &amp; 登录）</td>
+        </tr>
+        <tr>
+          <td>Admin</td>
+          <td>Next.js 15</td>
+          <td>3002</td>
+          <td>管理员后台（含注册审批）</td>
+        </tr>
+      </table>
+
+      <h3>当前已实现的功能</h3>
+      <table>
+        <tr>
+          <th style="width: 33%">模块</th>
+          <th style="width: 33%">前端页面</th>
+          <th style="width: 33%">后端 API</th>
+        </tr>
+        <tr>
+          <td><strong>注册</strong>（双通道）</td>
+          <td>
+            /register — 邮箱验证码 或 截图审批<br />
+            /login — 查注册进度（未注册→审核中→已通过→已拒绝→已过期）
+          </td>
+          <td>
+            POST /auth/register — 提交注册<br />
+            POST /auth/verify-email — 邮箱验证码<br />
+            POST /auth/check-registration — 查进度
+          </td>
+        </tr>
+        <tr>
+          <td><strong>管理审批</strong></td>
+          <td>/admin/registrations — 通过/拒绝 + 备注</td>
+          <td>
+            GET /admin/registrations — 列表<br />
+            POST /admin/registrations/:id — 审批
+          </td>
+        </tr>
+        <tr>
+          <td><strong>截图上传</strong></td>
+          <td>注册页内嵌上传组件</td>
+          <td>POST /uploads/registration — multipart 上传</td>
+        </tr>
+        <tr>
+          <td><strong>论坛首页</strong></td>
+          <td>/ — 信息流 + 版块导航 + 热议</td>
+          <td>mock 模式运行中</td>
+        </tr>
+        <tr>
+          <td><strong>帖子发布</strong></td>
+          <td>/submit — 标题/内容/版块选择</td>
+          <td>mock 模式运行中</td>
+        </tr>
+        <tr>
+          <td><strong>管理后台</strong></td>
+          <td>/admin — 仪表盘/用户/举报/内容/审计</td>
+          <td>mock 模式运行中</td>
+        </tr>
+      </table>
+
+      <div class="callout warn">
+        <strong>⚠ 当前项目状态</strong><br />
+        论坛核心功能（帖子/评论列表/私信）目前使用
+        <strong>mock 数据</strong>（<code>NEXT_PUBLIC_USE_MOCK=true</code>）。 注册流程（邮箱验证码
+        + 截图审批）前后端已完整对接。<br />
+        后端 Slice 2+（帖子/评论等业务逻辑）仍在开发中，实装后将 mock 开关设为
+        <code>false</code> 即可。
+      </div>
+
+      <!-- ============================================================ -->
+      <h2 id="ec2-spec">2. EC2 服务器规格怎么选</h2>
+      <!-- ============================================================ -->
+
+      <h3>最低配置（开发 / 演示）</h3>
+      <table>
+        <tr>
+          <th>配置项</th>
+          <th>推荐</th>
+          <th>说明</th>
+        </tr>
+        <tr>
+          <td>实例类型</td>
+          <td>t3.medium</td>
+          <td>2 vCPU, 4 GB 内存</td>
+        </tr>
+        <tr>
+          <td>存储</td>
+          <td>20 GB gp3</td>
+          <td>EBS 通用型 SSD</td>
+        </tr>
+        <tr>
+          <td>系统</td>
+          <td>Ubuntu 22.04 LTS</td>
+          <td>稳定, 社区支持好</td>
+        </tr>
+        <tr>
+          <td>带宽</td>
+          <td>按量付费 (100 Mbps)</td>
+          <td>AWS 默认</td>
+        </tr>
+      </table>
+
+      <h3>推荐配置（正式上线）</h3>
+      <table>
+        <tr>
+          <th>配置项</th>
+          <th>推荐</th>
+          <th>说明</th>
+        </tr>
+        <tr>
+          <td>实例类型</td>
+          <td>t3.large <strong>或</strong> c7g.large</td>
+          <td>2-4 vCPU, 8 GB 内存</td>
+        </tr>
+        <tr>
+          <td>存储</td>
+          <td>50 GB gp3</td>
+          <td>足够存放数据库 + 注册截图附件</td>
+        </tr>
+        <tr>
+          <td>系统</td>
+          <td>Ubuntu 22.04 LTS</td>
+          <td>—</td>
+        </tr>
+        <tr>
+          <td>带宽</td>
+          <td>按量付费</td>
+          <td>—</td>
+        </tr>
+      </table>
+
+      <h3>选择建议</h3>
+      <ul>
+        <li>
+          <strong>t3.medium（2C4G）</strong>：适合初期测试。4G 跑 API + Web + Admin + PostgreSQL +
+          Redis 刚好够用
+        </li>
+        <li><strong>t3.large（2C8G）</strong>：适合正式上线。内存充裕，不会轻易 OOM</li>
+        <li>
+          <strong>c7g.large（4C8G）</strong>：AWS Graviton 芯片，性价比更高。如果预算允许直接选这个
+        </li>
+        <li>
+          <strong>存储</strong>：20 GB 仅够系统+代码。建议
+          <strong>至少 30 GB</strong>，数据库和注册截图会随时间增长
+        </li>
+        <li>
+          <strong>省钱提示</strong>：如果只是测试，可以用
+          <strong>t3.micro（免费套餐 1C1G）</strong>，但无法同时跑三个服务
+        </li>
+      </ul>
+
+      <div class="callout info">
+        <strong>预算参考（美东区域，2025 年）</strong><br />
+        t3.medium: ~$30/月 · t3.large: ~$60/月 · c7g.large: ~$50/月 · 存储 30 GB gp3: ~$3/月
+      </div>
+
+      <!-- ============================================================ -->
+      <h2 id="prepare">3. 本地准备工作</h2>
+      <!-- ============================================================ -->
+
+      <p>在你的本地电脑（开发机）上确认以下软件已安装：</p>
+
+      <h3>3.1 需要安装的软件</h3>
+      <ul>
+        <li><strong>Git</strong> — 版本管理</li>
+        <li><strong>Node.js 22+</strong> — 推荐通过 nvm 安装</li>
+        <li><strong>pnpm 9</strong> — 包管理器</li>
+        <li><strong>AWS CLI</strong> — 管理 AWS 资源</li>
+      </ul>
+
+      <h3>3.2 检查版本</h3>
+      <pre>node -v    <span class="cm"># 应显示 v22.x.x 或更高</span>
+pnpm -v    <span class="cm"># 应显示 9.x</span></pre>
+
+      <h3>3.3 确保项目在本地能跑通</h3>
+      <pre><span class="cm"># 1. 安装所有依赖</span>
+pnpm install
+
+<span class="cm"># 2. 生成 Prisma 客户端</span>
+pnpm --filter @forum/api exec prisma generate
+
+<span class="cm"># 3. 确保类型检查通过</span>
+pnpm typecheck
+
+<span class="cm"># 4. 确保前端能构建成功</span>
+pnpm --filter @forum/web build
+pnpm --filter @forum/admin build</pre>
+
+      <!-- ============================================================ -->
+      <h2 id="launch">4. 创建 EC2 实例</h2>
+      <!-- ============================================================ -->
+
+      <h3>4.1 登录 AWS 控制台</h3>
+      <p>
+        打开
+        <a href="https://console.aws.amazon.com" target="_blank">console.aws.amazon.com</a>，搜索
+        "EC2" 进入 EC2 控制台。
+      </p>
+
+      <h3>4.2 启动实例（关键步骤）</h3>
+      <ol>
+        <li>点击 <strong>"Launch instance"</strong></li>
+        <li><strong>Name</strong>：填入 <code>zjgsu-forum</code></li>
+        <li>
+          <strong>Application and OS Images</strong>：选择
+          <code>Ubuntu Server 22.04 LTS (HVM), SSD Volume Type</code>，架构选 <strong>x86</strong>
+        </li>
+        <li><strong>Instance type</strong>：根据上节建议选择（起步选 <code>t3.medium</code>）</li>
+        <li>
+          <strong>Key pair (login)</strong>：点击 <strong>"Create new key pair"</strong><br />
+          — 类型选 <code>RSA</code>，格式选 <code>.pem</code>（macOS/Linux）<br />
+          — 下载后保存到 <strong>安全的地方</strong>（例如
+          <code>~/.ssh/zjgsu-forum.pem</code>）<br />
+          — <span style="color: var(--red)">⚠ 这个文件丢了就再也连不上服务器了！</span>
+        </li>
+        <li>
+          <strong>Network settings</strong>：<br />
+          ✅ <strong>Allow SSH traffic from</strong> → <code>Anywhere</code><br />
+          ✅ <strong>Allow HTTP traffic from the internet</strong><br />
+          ✅ <strong>Allow HTTPS traffic from the internet</strong>
+        </li>
+        <li><strong>Configure storage</strong>：设置 <code>30</code> GB，类型 gp3</li>
+        <li>点击 <strong>"Launch instance"</strong></li>
+      </ol>
+
+      <h3>4.3 设置安全组（防火墙）</h3>
+      <p>实例启动后，需要额外开放几个端口（如果测试阶段直接暴露端口用）：</p>
+      <ol>
+        <li>
+          左侧菜单 → <strong>Security Groups</strong> → 找到你的安全组 →
+          <strong>Edit inbound rules</strong>
+        </li>
+      </ol>
+      <table>
+        <tr>
+          <th>类型</th>
+          <th>协议</th>
+          <th>端口</th>
+          <th>来源</th>
+          <th>说明</th>
+        </tr>
+        <tr>
+          <td>SSH</td>
+          <td>TCP</td>
+          <td>22</td>
+          <td>0.0.0.0/0</td>
+          <td>远程连接</td>
+        </tr>
+        <tr>
+          <td>HTTP</td>
+          <td>TCP</td>
+          <td>80</td>
+          <td>0.0.0.0/0</td>
+          <td>网站 HTTP</td>
+        </tr>
+        <tr>
+          <td>HTTPS</td>
+          <td>TCP</td>
+          <td>443</td>
+          <td>0.0.0.0/0</td>
+          <td>网站 HTTPS</td>
+        </tr>
+        <tr>
+          <td>自定义 TCP</td>
+          <td>TCP</td>
+          <td>3001</td>
+          <td>0.0.0.0/0</td>
+          <td>Web 前端（测试用）</td>
+        </tr>
+        <tr>
+          <td>自定义 TCP</td>
+          <td>TCP</td>
+          <td>3002</td>
+          <td>0.0.0.0/0</td>
+          <td>Admin 后台（测试用）</td>
+        </tr>
+      </table>
+
+      <div class="callout danger">
+        <strong>🚨 安全提醒</strong><br />
+        端口 3001/3002 只有测试阶段才直接开放。正式上线后通过 Nginx 反代 +
+        域名访问，然后删除这两条规则。<br />
+        PostgreSQL（5432）和 Redis（6379）<strong>永远不要</strong>开放给公网。
+      </div>
+
+      <h3>4.4 获取公网 IP + 弹性 IP</h3>
+      <ul>
+        <li>
+          实例详情页可看到 <strong>Public IPv4 address</strong>（例如
+          <code>54.123.45.67</code>），记住它
+        </li>
+        <li>左侧菜单 → <strong>Elastic IPs</strong> → Allocate → Associate 到你的实例</li>
+        <li>弹性 IP 绑定到运行中的实例不收费，重启不会丢 IP</li>
+      </ul>
+
+      <!-- ============================================================ -->
+      <h2 id="ssh">5. SSH 连接实例</h2>
+      <!-- ============================================================ -->
+
+      <h3>5.1 设置密钥权限</h3>
+      <pre><span class="cm"># 在你的本地电脑执行</span>
+chmod 400 ~/.ssh/zjgsu-forum.pem</pre>
+
+      <h3>5.2 连接</h3>
+      <pre><span class="cm"># 把 54.123.45.67 换成你的公网 IP</span>
+ssh -i ~/.ssh/zjgsu-forum.pem ubuntu@54.123.45.67
+
+<span class="cm"># 第一次连接会提示 Are you sure you want to continue connecting?</span>
+<span class="cm"># 输入 yes 回车</span></pre>
+
+      <h3>5.3 连上后第一件事</h3>
+      <pre><span class="cm"># 更新系统</span>
+sudo apt update && sudo apt upgrade -y
+
+<span class="cm"># 安装常用工具</span>
+sudo apt install -y git curl wget unzip build-essential gnupg</pre>
+
+      <!-- ============================================================ -->
+      <h2 id="deps">6. 安装运行环境</h2>
+      <!-- ============================================================ -->
+
+      <h3>6.1 安装 Node.js 22（通过 nvm）</h3>
+      <pre><span class="cm"># 安装 nvm</span>
+curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash
+source ~/.bashrc
+
+<span class="cm"># 安装 Node.js 22</span>
+nvm install 22
+nvm alias default 22
+
+<span class="cm"># 验证</span>
+node -v   <span class="cm"># v22.x.x</span>
+npm -v    <span class="cm"># 10.x.x</span></pre>
+
+      <h3>6.2 安装 pnpm 9</h3>
+      <pre><span class="cm"># 通过 corepack 安装</span>
+sudo corepack enable
+corepack prepare pnpm@9.15.0 --activate
+
+<span class="cm"># 验证</span>
+pnpm -v   <span class="cm"># 9.15.0</span></pre>
+
+      <!-- ============================================================ -->
+      <h2 id="services">7. 安装 PostgreSQL &amp; Redis</h2>
+      <!-- ============================================================ -->
+
+      <h3>7.1 安装 PostgreSQL 16</h3>
+      <pre><span class="cm"># 添加 PostgreSQL 官方仓库</span>
+sudo sh -c 'echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
+curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo gpg --dearmor -o /etc/apt/trusted.gpg.d/postgresql.gpg
+sudo apt update
+sudo apt install -y postgresql-16 postgresql-client-16
+
+<span class="cm"># 启动</span>
+sudo systemctl enable postgresql
+sudo systemctl start postgresql
+
+<span class="cm"># 创建数据库 + 用户</span>
+sudo -u postgres psql -c "CREATE USER forum WITH PASSWORD 'your_prod_password_here';"
+sudo -u postgres psql -c "CREATE DATABASE forum OWNER forum;"
+sudo -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE forum TO forum;"
+sudo -u postgres psql -d forum -c "CREATE EXTENSION IF NOT EXISTS citext;"
+sudo -u postgres psql -d forum -c "CREATE EXTENSION IF NOT EXISTS ltree;"
+sudo -u postgres psql -d forum -c "CREATE EXTENSION IF NOT EXISTS pgcrypto;"</pre>
+
+      <div class="callout danger">
+        <strong>🔒 不要用 forum_dev_password 作为生产密码！</strong><br />
+        上面 <code>your_prod_password_here</code> 请替换为强随机密码。
+      </div>
+
+      <h3>7.2 安装 Redis 7</h3>
+      <pre><span class="cm"># 安装</span>
+sudo apt install -y redis-server
+
+<span class="cm"># 设置 supervised systemd</span>
+sudo sed -i 's/^supervised no/supervised systemd/' /etc/redis/redis.conf
+
+<span class="cm"># 启动</span>
+sudo systemctl enable redis-server
+sudo systemctl start redis-server
+
+<span class="cm"># 验证</span>
+redis-cli ping   <span class="cm"># 应返回 PONG</span></pre>
+
+      <!-- ============================================================ -->
+      <h2 id="deploy">8. 部署项目代码</h2>
+      <!-- ============================================================ -->
+
+      <h3>8.1 上传代码</h3>
+      <pre><span class="cm"># 方式 A: Git 克隆（推荐）</span>
+cd ~
+git clone https://github.com/你的用户名/浙工商树洞.git forum
+
+<span class="cm"># 方式 B: 如果代码在本地，先打包再 scp</span>
+<span class="cm"># 本地执行:</span>
+<span class="cm">#   tar czf forum.tar.gz --exclude=node_modules --exclude=.next 浙工商树洞/</span>
+<span class="cm">#   scp -i ~/.ssh/zjgsu-forum.pem forum.tar.gz ubuntu@54.123.45.67:~</span>
+<span class="cm"># 服务器解压:</span>
+<span class="cm">#   tar xzf forum.tar.gz && cd 浙工商树洞</span></pre>
+
+      <h3>8.2 安装依赖 + 生成 Prisma</h3>
+      <pre>
+cd ~/forum
+pnpm install --frozen-lockfile
+pnpm --filter @forum/api exec prisma generate</pre
+      >
+
+      <h3>8.3 数据库迁移</h3>
+      <pre><span class="cm"># 执行所有迁移（自动建表: users, posts, comments, </span>
+<span class="cm">#   registration_requests, boards 等全部 15 张表）</span>
+pnpm --filter @forum/api exec prisma migrate deploy
+
+<span class="cm"># 执行 post-migrate SQL（创建扩展索引等）</span>
+pnpm --filter @forum/api exec prisma db execute \
+  --file prisma/sql/post-migrate.sql \
+  --schema prisma/schema.prisma
+
+<span class="cm"># 填充初始版块数据（8 个版块 + 敏感词）</span>
+pnpm --filter @forum/api exec tsx prisma/seed.ts</pre>
+
+      <div class="callout tip">
+        <strong>新建表说明</strong><br />
+        <code>registration_requests</code>
+        表保存注册申请（学号/邮箱/密码Hash/验证码/截图URL/状态/过期时间），管理员审批后自动在
+        <code>users</code> 表创建用户。
+      </div>
+
+      <!-- ============================================================ -->
+      <h2 id="config">9. 配置环境变量</h2>
+      <!-- ============================================================ -->
+
+      <h3>9.1 生成密钥</h3>
+      <pre><span class="cm"># 执行两次，得到两个不同的 64 字节 hex 字符串</span>
+node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"
+<span class="cm"># ↑ 第一个给 JWT_ACCESS_SECRET，第二个给 ANON_SECRET</span></pre>
+
+      <h3>9.2 配置 API 环境变量</h3>
+      <pre><span class="cm"># 复制模板</span>
+cp apps/api/.env.example apps/api/.env
+nano apps/api/.env</pre>
+
+      <p>修改为以下值（<code>YOUR_IP</code> 换成你的弹性 IP 或域名）：</p>
+      <pre><span class="hl">NODE_ENV=production</span>
+APP_PORT=3000
+APP_HOST=0.0.0.0
+APP_BASE_URL=https://unidating.top
+FRONTEND_ORIGIN=https://unidating.top
+
+DATABASE_URL=postgresql://forum:<span class="hl">your_prod_password_here</span>@localhost:5432/forum?schema=public
+
+REDIS_URL=redis://localhost:6379
+
+<span class="hl">JWT_ACCESS_SECRET=</span>  <span class="cm"># ← 粘贴第一个随机 hex（64 字节）</span>
+<span class="hl">ANON_SECRET=</span>        <span class="cm"># ← 粘贴第二个随机 hex（64 字节）</span>
+
+AWS_REGION=ap-northeast-1
+AWS_ACCESS_KEY_ID=
+AWS_SECRET_ACCESS_KEY=
+S3_UPLOADS_BUCKET=zjgsu-forum-uploads
+S3_AVATARS_BUCKET=zjgsu-forum-avatars
+CDN_BASE_URL=https://unidating.top/files
+
+<span class="cm"># 生产环境邮件: AWS SES 东京区域</span>
+MAIL_DRIVER=ses
+MAIL_FROM=你在SES东京区域验证过的发件邮箱
+
+LOG_LEVEL=info
+LOG_PRETTY=false
+RATE_LIMIT_TRUST_PROXY=true</pre>
+
+      <h3>9.3 配置 Web 前端</h3>
+      <pre>
+cp apps/web/.env.example apps/web/.env.local
+nano apps/web/.env.local</pre
+      >
+      <pre>NEXT_PUBLIC_API_URL=http://localhost:3000  <span class="cm"># 同机部署用 localhost</span>
+NEXT_PUBLIC_APP_NAME=浙工商树洞
+NEXT_PUBLIC_USE_MOCK=<span class="hl">true</span>   <span class="cm"># 后端 Slice 2+ 完成后改为 false</span></pre>
+
+      <h3>9.4 配置 Admin 后台</h3>
+      <pre>
+cp apps/admin/.env.example apps/admin/.env.local
+nano apps/admin/.env.local</pre
+      >
+      <pre>NEXT_PUBLIC_API_URL=http://localhost:3000
+NEXT_PUBLIC_WEB_URL=https://unidating.top
+NEXT_PUBLIC_ADMIN_URL=https://manage.unidating.top
+NEXT_PUBLIC_APP_NAME=浙工商树洞·后台
+NEXT_PUBLIC_USE_MOCK=<span class="hl">true</span></pre>
+
+      <!-- ============================================================ -->
+      <h2 id="build">10. 构建 &amp; 启动</h2>
+      <!-- ============================================================ -->
+
+      <h3>10.1 构建所有应用</h3>
+      <pre><span class="cm"># 构建 API（TypeScript → JavaScript）</span>
+pnpm --filter @forum/api build
+
+<span class="cm"># 构建前端</span>
+NEXT_PUBLIC_USE_MOCK=true pnpm --filter @forum/web build
+
+<span class="cm"># 构建管理后台</span>
+NEXT_PUBLIC_USE_MOCK=true pnpm --filter @forum/admin build</pre>
+
+      <h3>10.2 测试 API 启动</h3>
+      <pre><span class="cm"># 手动启动，按 Ctrl+C 停止</span>
+pnpm --filter @forum/api start
+
+<span class="cm"># 另一个终端，测试健康检查</span>
+curl http://localhost:3000/healthz
+<span class="cm"># {"status":"ok","timestamp":"2026-..."}</span>
+
+curl http://localhost:3000/readyz
+<span class="cm"># {"status":"ok","components":{"database":{"status":"up"},...}}</span></pre>
+
+      <h3>10.3 测试注册流程（API 直测）</h3>
+      <pre><span class="cm"># 提交注册（mock 模式请用前端页面测试）</span>
+curl -X POST http://localhost:3000/api/v1/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{"studentId":"20231234999","email":"20231234999@pop.zjgsu.edu.cn","username":"测试用户","password":"12345678","method":"email"}'
+
+<span class="cm"># 验证邮箱</span>
+curl -X POST http://localhost:3000/api/v1/auth/verify-email \
+  -H "Content-Type: application/json" \
+  -d '{"studentId":"20231234999","code":"123456"}'
+
+<span class="cm"># 查注册进度</span>
+curl -X POST http://localhost:3000/api/v1/auth/check-registration \
+  -H "Content-Type: application/json" \
+  -d '{"studentId":"20231234999","password":"12345678"}'</pre>
+
+      <!-- ============================================================ -->
+      <h2 id="nginx">11. Nginx 反向代理 + 域名</h2>
+      <!-- ============================================================ -->
+
+      <h3>11.1 安装 Nginx</h3>
+      <pre>
+sudo apt install -y nginx
+sudo systemctl enable nginx</pre
+      >
+
+      <h3>11.2 配置站点</h3>
+      <pre>sudo nano /etc/nginx/sites-available/forum</pre>
+
+      <p>
+        把下面配置中的域名改成你自己的（<code>unidating.top</code>,
+        <code>manage.unidating.top</code>）。<strong>管理后台用一个不易猜到的子域名</strong>：
+      </p>
+      <pre><span class="cm"># ===== 论坛前端 =====</span>
+server {
+    listen 80;
+    server_name <span class="hl">unidating.top www.unidating.top</span>;
+
+    <span class="cm"># 上传文件大小限制（截图上传）</span>
+    client_max_body_size 10M;
+
+    location / {
+        proxy_pass http://127.0.0.1:3001;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_cache_bypass $http_upgrade;
+    }
+}
+
+<span class="cm"># ===== 管理后台（隐藏入口，用不易猜到的子域名）=====</span>
+server {
+    listen 80;
+    server_name <span class="hl">manage.unidating.top</span>;
+
+    location / {
+        proxy_pass http://127.0.0.1:3002;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_cache_bypass $http_upgrade;
+    }
+}</pre>
+
+      <h3>11.3 启用 + 重启</h3>
+      <pre>sudo ln -s /etc/nginx/sites-available/forum /etc/nginx/sites-enabled/
+sudo rm -f /etc/nginx/sites-enabled/default     <span class="cm"># 删除默认站点</span>
+sudo nginx -t                                     <span class="cm"># 测试配置</span>
+sudo systemctl reload nginx                       <span class="cm"># 应用</span></pre>
+
+      <h3>11.4 先用 IP 直连验证部署</h3>
+      <p>在配域名之前，先用 IP 确认服务能跑通：</p>
+      <ul>
+        <li><code>http://你的弹性IP:3001</code> → 应看到论坛首页</li>
+        <li><code>http://你的弹性IP:3002</code> → 应看到管理后台</li>
+        <li>确保能访问之后，再往下配置域名</li>
+      </ul>
+
+      <!-- ============================================================ -->
+      <h2 id="dns-setup">11-2. 阿里云域名 DNS 配置（unidating.top → AWS EC2）</h2>
+      <!-- ============================================================ -->
+
+      <div class="callout info">
+        <strong>你的情况</strong><br />
+        域名 <code>unidating.top</code> 是在<strong>阿里云</strong>购买的，但服务器在
+        <strong>AWS EC2</strong> 上。 DNS 的作用就是告诉浏览器：「访问 unidating.top 时，请去 AWS
+        那个 IP 地址找服务器」。 操作很简单：在阿里云后台添加几条记录即可。
+      </div>
+
+      <h3>第 1 步：登录阿里云 DNS 控制台</h3>
+      <ol>
+        <li>
+          打开 <a href="https://dns.console.aliyun.com" target="_blank">dns.console.aliyun.com</a>
+        </li>
+        <li>在域名列表里找到 <code>unidating.top</code></li>
+        <li>点击右侧的 <strong>"解析设置"</strong></li>
+      </ol>
+
+      <h3>第 2 步：添加 DNS 记录</h3>
+      <p>点击 <strong>"添加记录"</strong>，依次添加以下 3 条：</p>
+
+      <table>
+        <tr>
+          <th>记录类型</th>
+          <th>主机记录</th>
+          <th>记录值</th>
+          <th>TTL</th>
+          <th>说明</th>
+        </tr>
+        <tr>
+          <td><strong>A</strong></td>
+          <td><strong>@</strong></td>
+          <td><span class="hl">你的 AWS 弹性 IP</span>（如 54.123.45.67）</td>
+          <td>600</td>
+          <td>主域名 unidating.top 指向服务器</td>
+        </tr>
+        <tr>
+          <td><strong>A</strong></td>
+          <td><strong>manage</strong></td>
+          <td><span class="hl">你的 AWS 弹性 IP</span></td>
+          <td>600</td>
+          <td>manage.unidating.top 指向管理后台（隐藏入口）</td>
+        </tr>
+        <tr>
+          <td><strong>A</strong></td>
+          <td><strong>www</strong></td>
+          <td><span class="hl">你的 AWS 弹性 IP</span></td>
+          <td>600</td>
+          <td>www.unidating.top 也指向论坛</td>
+        </tr>
+      </table>
+
+      <div class="callout tip">
+        <strong>📝 字段解释（新手必看）</strong><br />
+        <strong>主机记录 @</strong> = 代表域名本身（unidating.top）<br />
+        <strong>主机记录 manage</strong> = 代表子域名 manage.unidating.top<br />
+        <strong>记录值</strong> = 你的 AWS EC2 弹性 IP 地址<br />
+        <strong>TTL 600</strong> = DNS 缓存 10 分钟，生效快
+      </div>
+
+      <h3>第 3 步：验证 DNS 是否生效</h3>
+      <pre><span class="cm"># 在本地电脑执行（替换为你的 IP）</span>
+nslookup unidating.top
+<span class="cm"># 应返回你设置的 AWS IP 地址</span>
+
+<span class="cm"># 或直接用 ping</span>
+ping unidating.top
+<span class="cm"># 应返回你的 AWS IP</span></pre>
+
+      <div class="callout warn">
+        <strong>⏳ DNS 生效需要时间</strong><br />
+        阿里云修改 DNS 后一般 <strong>5-15 分钟</strong>内生效。如果
+        <code>nslookup</code> 返回的不是你的 IP，请耐心等一会再试。<br />
+        如果超过 1 小时还没生效，检查阿里云控制台里域名状态是否是「正常」。
+      </div>
+
+      <h3>第 4 步：更新 Nginx 配置使用你的域名</h3>
+      <p>
+        回到第 11 节的 Nginx 配置，把所有 <code>forum.yourdomain.com</code> 替换为
+        <code>unidating.top</code>，管理后台用 <code>manage.unidating.top</code>：
+      </p>
+      <pre>sudo nano /etc/nginx/sites-available/forum</pre>
+
+      <pre><span class="cm"># 论坛前端</span>
+server {
+    listen 80;
+    server_name <span class="hl">unidating.top www.unidating.top</span>;
+    client_max_body_size 10M;
+    location / {
+        proxy_pass http://127.0.0.1:3001;
+        ...
+    }
+}
+
+<span class="cm"># 管理后台</span>
+server {
+    listen 80;
+    server_name <span class="hl">manage.unidating.top</span>;
+    location / {
+        proxy_pass http://127.0.0.1:3002;
+        ...
+    }
+}</pre>
+
+      <pre><span class="cm"># 重启 Nginx</span>
+sudo nginx -t && sudo systemctl reload nginx</pre>
+
+      <!-- ============================================================ -->
+      <h2 id="ssl">12. SSL 证书 (HTTPS)</h2>
+      <!-- ============================================================ -->
+
+      <h3>12.1 安装 Certbot</h3>
+      <pre>sudo apt install -y certbot python3-certbot-nginx</pre>
+
+      <h3>12.2 获取证书</h3>
+      <p>确保 DNS 已生效（<code>nslookup unidating.top</code> 返回你的 AWS IP），然后：</p>
+      <pre>sudo certbot --nginx -d unidating.top -d www.unidating.top -d manage.unidating.top</pre>
+
+      <p>
+        Certbot 会：自动验证域名 → 签发 Let's Encrypt 证书 → 修改 Nginx 配置为 HTTPS → 设置自动续期
+      </p>
+
+      <h3>12.3 测试自动续期</h3>
+      <pre>sudo certbot renew --dry-run</pre>
+
+      <div class="callout info">
+        <strong>证书续期是自动的</strong><br />
+        Certbot 安装后会自动添加定时任务（systemd timer），证书到期前自动续。你可以安心不管它。<br />
+        手动续期命令：<code>sudo certbot renew</code>
+      </div>
+
+      <!-- ============================================================ -->
+      <h2 id="email">13. 配置邮箱验证码发送（AWS SES / 第三方 SMTP）</h2>
+      <!-- ============================================================ -->
+
+      <div class="callout warn">
+        <strong>为什么要配邮箱？</strong><br />
+        注册时选择「邮箱验证」方式，后端会生成 6 位随机验证码存到数据库，然后
+        <strong>发邮件</strong> 给用户。 如果你不配邮箱发送，验证码虽然生成了但用户收不到。<br />
+        <strong>mock 模式下验证码固定为 123456</strong>，不依赖真实邮件。生产环境需要按下面步骤配。
+      </div>
+
+      <h3>方案 A：AWS SES（推荐，和 EC2 在同一生态）</h3>
+
+      <h4>13A.1 什么是 AWS SES</h4>
+      <p>
+        SES（Simple Email Service）是 AWS 的邮件发送服务。EC2 上的应用通过 SES 发邮件免费用额 每天
+        62,000 封（从 EC2 发送），足够校园论坛使用。
+      </p>
+
+      <h4>13A.2 申请 SES 生产访问</h4>
+      <ol>
+        <li>
+          打开 <a href="https://console.aws.amazon.com/ses" target="_blank">AWS SES 控制台</a>
+        </li>
+        <li>右上角区域选择 <strong>Asia Pacific (Tokyo) / ap-northeast-1</strong></li>
+        <li>先完成发件身份验证和生产访问申请</li>
+        <li>推荐给 EC2 绑定 IAM Role，让后端通过 SES API 发信，不在服务器保存长期 access key</li>
+      </ol>
+
+      <h4>13A.3 验证发件邮箱地址</h4>
+      <p>SES 默认在 <strong>sandbox（沙盒）</strong> 模式下，只能向已验证的邮箱发信。你需要：</p>
+      <ol>
+        <li>
+          SES 控制台 → 左侧 <strong>"Verified identities"</strong> →
+          <strong>"Create identity"</strong>
+        </li>
+        <li>
+          选 <strong>"Email address"</strong>，填入你要用来发验证码的邮箱（比如
+          <code>noreply@unidating.top</code>）
+        </li>
+        <li>点 <strong>"Create identity"</strong></li>
+        <li>AWS 会向这个邮箱发一封确认邮件 → 打开邮件 → 点确认链接</li>
+        <li>状态变成 <strong>Verified</strong> 就 OK 了</li>
+        <li>同样操作，把你自己的常用邮箱也验证一下（加为测试收件人）</li>
+      </ol>
+
+      <h4>13A.4 升级到生产模式（可选，公开上线时做）</h4>
+      <p>沙盒模式下只能发给你验证过的邮箱。正式上线后需要：</p>
+      <ol>
+        <li>SES 控制台 → 左侧 <strong>"Account dashboard"</strong></li>
+        <li>点击 <strong>"Request production access"</strong></li>
+        <li>填写申请（说明你是校园论坛，仅用于发送邮箱验证码和通知邮件）</li>
+        <li>AWS 审核通过后（通常 1-2 天），就可以向任意邮箱发送了</li>
+      </ol>
+
+      <div class="callout warn">
+        <strong>沙盒模式足够初期测试</strong><br />
+        你注册一个测试邮箱，在 SES 里把自己和 noreply@unidating.top
+        都验证了。然后注册时用那个测试邮箱就能收到验证码。<br />
+        等正式上线时再去申请生产模式。
+      </div>
+
+      <h4>13A.5 配置项目 .env</h4>
+      <p>
+        项目后端使用 AWS SES API 发送验证码。给 EC2 绑定有 SES 发信权限的 IAM Role 后，编辑 API 的
+        .env：
+      </p>
+      <pre>nano ~/forum/apps/api/.env</pre>
+      <p>修改邮件相关配置：</p>
+      <pre><span class="hl">MAIL_DRIVER=ses</span>
+AWS_REGION=<span class="hl">ap-northeast-1</span>
+MAIL_FROM=<span class="hl">你在SES东京区域验证过的发件邮箱</span></pre>
+
+      <div class="callout tip">
+        <strong>SES SMTP 服务器地址由区域决定</strong><br />
+        如果你的 EC2 在美东（us-east-1）：<code>email-smtp.us-east-1.amazonaws.com</code><br />
+        如果在东京（ap-northeast-1）：<code>email-smtp.ap-northeast-1.amazonaws.com</code><br />
+        在 SES 控制台 "SMTP settings" 页面能看到完整的服务器地址。
+      </div>
+
+      <h3>方案 B：用第三方 SMTP（阿里云企业邮箱 / QQ邮箱 / 163邮箱）</h3>
+
+      <p>如果你不想折腾 AWS SES，也可以用任何 SMTP 邮箱发送。以 <strong>163 邮箱</strong> 为例：</p>
+      <ol>
+        <li>登录 mail.163.com → 设置 → POP3/SMTP/IMAP → 开启 SMTP 服务</li>
+        <li>设置一个「授权码」（不是登录密码，是专门的客户端密码）</li>
+        <li>.env 配置：</li>
+      </ol>
+      <pre>
+MAIL_DRIVER=smtp
+MAIL_FROM=你的163邮箱@163.com
+SMTP_HOST=smtp.163.com
+SMTP_PORT=465
+SMTP_USER=你的163邮箱@163.com
+SMTP_PASSWORD=你的163授权码</pre
+      >
+
+      <div class="callout warn">
+        <strong>第三方邮箱的每日发送限制</strong><br />
+        163 邮箱每天大概能发 50-100 封，QQ 邮箱类似。如果用户量大，建议还是用 AWS SES（每天 62,000
+        封免费）。
+      </div>
+
+      <h3>13.5 验证邮件发送是否成功</h3>
+      <p>配完邮箱后重启 API：</p>
+      <pre>pm2 restart forum-api
+pm2 logs forum-api  <span class="cm"># 看有没有报错</span></pre>
+      <p>
+        然后在注册页用邮箱方式注册，验证码应该会发到对应邮箱（实际代码会在 API
+        日志里打印验证码内容）。
+      </p>
+
+      <hr />
+
+      <!-- ============================================================ -->
+      <h2 id="pm2">14. PM2 进程守护</h2>
+      <!-- ============================================================ -->
+
+      <h3>14.1 安装 PM2</h3>
+      <pre>npm install -g pm2</pre>
+
+      <h3>14.2 创建 PM2 配置文件</h3>
+      <pre><span class="cm"># 在项目根目录创建</span>
+nano ~/forum/ecosystem.config.cjs</pre>
+
+      <pre>
+module.exports = {
+  apps: [
+    {
+      name: 'forum-api',
+      cwd: './apps/api',
+      script: 'dist/main.js',
+      instances: 1,
+      exec_mode: 'fork',
+      env: { NODE_ENV: 'production' },
+      max_memory_restart: '1G',
+      error_file: '../../logs/api-error.log',
+      out_file: '../../logs/api-out.log',
+      merge_logs: true,
+      log_date_format: 'YYYY-MM-DD HH:mm:ss',
+    },
+    {
+      name: 'forum-web',
+      cwd: './apps/web',
+      script: 'node_modules/.bin/next',
+      args: 'start -p 3001',
+      instances: 1,
+      exec_mode: 'fork',
+      env: { NODE_ENV: 'production' },
+      max_memory_restart: '1G',
+      error_file: '../../logs/web-error.log',
+      out_file: '../../logs/web-out.log',
+      merge_logs: true,
+      log_date_format: 'YYYY-MM-DD HH:mm:ss',
+    },
+    {
+      name: 'forum-admin',
+      cwd: './apps/admin',
+      script: 'node_modules/.bin/next',
+      args: 'start -p 3002',
+      instances: 1,
+      exec_mode: 'fork',
+      env: { NODE_ENV: 'production' },
+      max_memory_restart: '1G',
+      error_file: '../../logs/admin-error.log',
+      out_file: '../../logs/admin-out.log',
+      merge_logs: true,
+      log_date_format: 'YYYY-MM-DD HH:mm:ss',
+    },
+  ],
+};</pre
+      >
+
+      <div class="callout warn">
+        <strong>Next.js 路径说明</strong><br />
+        monorepo 中 Next.js CLI 在根目录 <code>node_modules/.bin/next</code>。 配置里的
+        <code>../../node_modules/.bin/next</code> 是从 <code>apps/web</code> 或
+        <code>apps/admin</code> 出发的相对路径。
+      </div>
+
+      <h3>14.3 启动所有服务</h3>
+      <pre><span class="cm"># 创建日志目录</span>
+mkdir -p ~/forum/logs
+
+<span class="cm"># 启动</span>
+cd ~/forum
+pm2 start ecosystem.config.cjs
+
+<span class="cm"># 查看状态（三个进程应显示 online）</span>
+pm2 status
+
+<span class="cm"># 设置开机自启</span>
+pm2 startup
+pm2 save</pre>
+
+      <h3>14.4 PM2 常用命令</h3>
+      <pre>pm2 status              <span class="cm"># 查看所有进程</span>
+pm2 logs                <span class="cm"># 查看所有日志</span>
+pm2 logs forum-api      <span class="cm"># 只看 API 日志</span>
+pm2 restart all         <span class="cm"># 重启所有</span>
+pm2 restart forum-web   <span class="cm"># 只重启前端</span>
+pm2 monit               <span class="cm"># 实时 CPU / 内存</span>
+pm2 delete all          <span class="cm"># 全部移除</span></pre>
+
+      <!-- ============================================================ -->
+      <h2 id="verify">15. 验证部署</h2>
+      <!-- ============================================================ -->
+
+      <p>部署完成后，按以下顺序逐一验证：</p>
+
+      <h3>15.1 基础服务检查</h3>
+      <pre><span class="cm"># PM2 状态</span>
+pm2 status                 <span class="cm"># forum-api / forum-web / forum-admin 都是 online</span>
+
+<span class="cm"># 数据库 + Redis 健康</span>
+sudo systemctl status postgresql  <span class="cm"># active</span>
+sudo systemctl status redis-server <span class="cm"># active</span>
+sudo systemctl status nginx       <span class="cm"># active</span></pre>
+
+      <h3>15.2 API 端点检查</h3>
+      <pre><span class="cm"># 健康检查</span>
+curl http://localhost:3000/healthz
+<span class="cm"># → {"status":"ok","timestamp":"..."}</span>
+
+<span class="cm"># 就绪检查（DB + Redis 都通才 200）</span>
+curl http://localhost:3000/readyz
+<span class="cm"># → {"status":"ok","components":{"database":{"status":"up"},"redis":{"status":"up"}}}</span>
+
+<span class="cm"># 注册申请列表（需要 admin 认证，开发阶段可能跳过）</span>
+curl http://localhost:3000/api/v1/admin/registrations</pre>
+
+      <h3>15.3 前端页面检查</h3>
+      <ol>
+        <li>打开 <code>https://unidating.top</code> → 看到论坛首页（信息流 + 侧栏）</li>
+        <li>点击导航栏「发布帖子」→ 进入 /submit 页面 → 选版块、写内容</li>
+        <li>点击「注册」→ 进入 /register → 选「邮箱验证」或「截图审批」模式</li>
+        <li>邮箱验证：填表单 → 点发送 → 输入验证码 <code>123456</code>（mock 模式）→ 验证成功</li>
+        <li>截图审批：填表单 → 选文件 → 提交 → 提示等待审批</li>
+        <li>打开 /login → 输入学号 + 密码 → 显示注册状态</li>
+        <li>滚动首页 → 左/右导航栏固定在原位不移动</li>
+      </ol>
+
+      <h3>15.4 管理后台检查</h3>
+      <ol>
+        <li>
+          打开 <code>https://manage.unidating.top</code> → 看到管理员登录页 → 输入账号密码登录 →
+          看到仪表盘
+        </li>
+        <li>侧栏「注册审批」→ 看到待审批列表（3 条 mock 数据）</li>
+        <li>点击「通过」→ 状态变为已通过</li>
+        <li>检查其他页面：用户管理 / 举报队列 / 内容管理 / 审计日志</li>
+      </ol>
+
+      <!-- ============================================================ -->
+      <h2 id="faq">16. 常见问题</h2>
+      <!-- ============================================================ -->
+
+      <h3>Q: 注册后验证邮件收不到</h3>
+      <p>
+        mock 模式下不需要真实邮件，验证码固定为 <code>123456</code>。<br />
+        生产模式需要配置 AWS SES（Simple Email Service）账户并激活发件邮箱，然后修改
+        <code>.env</code> 里的 SMTP 配置。
+      </p>
+
+      <h3>Q: 截图上传失败 / 管理员看不到截图</h3>
+      <p>
+        mock 模式下上传返回的是一个占位 URL，仅用于测试流程。生产模式需要配置 S3 存储桶。<br />
+        注册截图会作为 <code>registration_requests.screenshot_url</code> 存到数据库。
+      </p>
+
+      <h3>Q: 部署后网页空白 / 502 Bad Gateway</h3>
+      <p>
+        <code>pm2 status</code> 确认三个进程都是 online。<br />
+        <code>pm2 logs forum-web</code> 查看错误日志。<br />
+        <code>sudo systemctl status nginx</code> 确认 Nginx 在运行。
+      </p>
+
+      <h3>Q: 数据库连接失败（API 日志显示 Prisma connection error）</h3>
+      <p>
+        检查 <code>.env</code> 里 <code>DATABASE_URL</code> 的用户名和密码。<br />
+        <code>sudo systemctl status postgresql</code> 确认 PostgreSQL 运行中。<br />
+        <code>psql -U forum -d forum -h localhost -W</code> 手动测试。
+      </p>
+
+      <h3>Q: 服务器内存不够</h3>
+      <pre><span class="cm"># 查看内存</span>
+free -h
+
+<span class="cm"># 如果接近 100%，优先级:</span>
+<span class="cm"># 1. 先停掉管理后台</span>
+pm2 stop forum-admin
+
+<span class="cm"># 2. 升级实例（AWS 控制台 → 停止实例 → 更改实例类型 → 启动）</span>
+<span class="cm"># 3. 临时加 2GB Swap</span>
+sudo fallocate -l 2G /swapfile
+sudo chmod 600 /swapfile
+sudo mkswap /swapfile
+sudo swapon /swapfile
+echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab</pre>
+
+      <h3>Q: 如何更新代码</h3>
+      <pre><span class="cm"># 拉取最新</span>
+cd ~/forum && git pull
+pnpm install --frozen-lockfile
+
+<span class="cm"># 重新生成 Prisma（如果 schema 有变）</span>
+pnpm --filter @forum/api exec prisma generate
+
+<span class="cm"># 执行新迁移（如有）</span>
+pnpm --filter @forum/api exec prisma migrate deploy
+
+<span class="cm"># 重新构建</span>
+pnpm --filter @forum/api build
+NEXT_PUBLIC_USE_MOCK=true pnpm --filter @forum/web build
+NEXT_PUBLIC_USE_MOCK=true pnpm --filter @forum/admin build
+
+<span class="cm"># 重启</span>
+pm2 restart all</pre>
+
+      <h3>Q: 什么时候把 mock 关掉？</h3>
+      <p>
+        等后端的帖子/评论/私信等业务逻辑全部开发完成后（API Slice 2-10）。<br />
+        届时将 <code>.env.local</code> 里的 <code>NEXT_PUBLIC_USE_MOCK</code> 改为
+        <code>false</code>，重新构建并重启即可。<br />
+        <strong>注册/审批功能</strong>前后端已经完整对接，mock 只影响帖子列表和评论等板块。
+      </p>
+
+      <hr />
+
+      <div class="callout success">
+        <strong>部署完成!</strong><br />
+        你的浙工商树洞已经上线了。记住三个关键命令：<br /><br />
+        <code>pm2 status</code> — 看服务状态 · <code>pm2 logs</code> — 看日志 ·
+        <code>pm2 restart all</code> — 一键重启<br /><br />
+        遇到问题先查日志，日志里会有明确的错误信息。
+      </div>
+    </div>
+  </body>
+</html>

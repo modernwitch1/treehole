@@ -1,0 +1,26 @@
+{
+  "name": "zjgsu-forum",
+  "version": "0.1.0",
+  "private": true,
+  "description": "浙江工商大学校园论坛 — monorepo (NestJS API + Next.js web)",
+  "license": "UNLICENSED",
+  "packageManager": "pnpm@9.15.0",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "scripts": {
+    "dev:api": "pnpm --filter @forum/api dev",
+    "dev:web": "pnpm --filter @forum/web dev",
+    "dev:admin": "pnpm --filter @forum/admin dev",
+    "build": "pnpm -r build",
+    "lint": "pnpm -r lint",
+    "lint:check": "pnpm -r lint:check",
+    "typecheck": "pnpm -r typecheck",
+    "test": "pnpm -r test",
+    "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md,yml,yaml}\" --ignore-path .gitignore",
+    "format:check": "prettier --check \"**/*.{ts,tsx,js,jsx,json,md,yml,yaml}\" --ignore-path .gitignore"
+  },
+  "devDependencies": {
+    "prettier": "^3.4.2"
+  }
+}

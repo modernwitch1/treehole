@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__Claude_Preview__preview_start",
+      "Bash(ls -la /Users/dev/workspace-3218de97)",
+      "Read(//Users/dev/**)",
+      "Bash(find /Users/dev/workspace-3218de97 -type f -name \"*.json\" -o -name \"*.html\" -o -name \"*.tsx\" -o -name \"*.jsx\" -o -name \"*.ts\" -o -name \"*.js\" | head -50)"
+    ]
+  }
+}

@@ -1,0 +1,242 @@
+@import 'tailwindcss';
+@import 'tw-animate-css';
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* 校园蓝主题。对比度、层次与暗色模式均由同一组语义色控制。 */
+
+:root {
+  --background: #f6f8fc;
+  --foreground: #142033;
+  --card: #ffffff;
+  --card-foreground: #142033;
+  --popover: #ffffff;
+  --popover-foreground: #142033;
+  --primary: #0868c8;
+  --primary-foreground: #ffffff;
+  --secondary: #edf3fb;
+  --secondary-foreground: #17314f;
+  --muted: #eef2f7;
+  --muted-foreground: #5d6b7e;
+  --accent: #e7f1fd;
+  --accent-foreground: #075aa9;
+  --destructive: #c9343a;
+  --destructive-foreground: #ffffff;
+  --upvote: #e64a19;
+  --downvote: #607d9f;
+  --border: #dfe5ee;
+  --input: #d7dfeb;
+  --ring: #0868c8;
+  --radius: 0.75rem;
+}
+
+.dark {
+  --background: #07111f;
+  --foreground: #edf4ff;
+  --card: #0c192a;
+  --card-foreground: #edf4ff;
+  --popover: #101d2f;
+  --popover-foreground: #edf4ff;
+  --primary: #5aaaff;
+  --primary-foreground: #061426;
+  --secondary: #14243a;
+  --secondary-foreground: #e4efff;
+  --muted: #142235;
+  --muted-foreground: #9caec4;
+  --accent: #173a5f;
+  --accent-foreground: #dcecff;
+  --destructive: #f16c72;
+  --destructive-foreground: #240507;
+  --upvote: #ff7651;
+  --downvote: #8ca8c8;
+  --border: #24364c;
+  --input: #32475f;
+  --ring: #5aaaff;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-upvote: var(--upvote);
+  --color-downvote: var(--downvote);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+@layer base {
+  *,
+  ::before,
+  ::after {
+    border-color: var(--border);
+  }
+
+  html {
+    scroll-behavior: smooth;
+    background: var(--background);
+  }
+
+  body {
+    background: var(--background);
+    color: var(--foreground);
+    min-width: 320px;
+    font-feature-settings:
+      'rlig' 1,
+      'calt' 1,
+      'ss01' 1;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  a,
+  button,
+  input,
+  textarea,
+  select {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 3px;
+  }
+
+  /* 滚动条 */
+  ::-webkit-scrollbar {
+    width: 12px;
+    height: 12px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: var(--border);
+    border-radius: 6px;
+    border: 3px solid var(--background);
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--muted-foreground);
+  }
+
+  /* 选中态颜色 */
+  ::selection {
+    background: color-mix(in srgb, var(--primary) 28%, transparent);
+    color: var(--foreground);
+  }
+}
+
+@layer utilities {
+  .app-shell {
+    background:
+      radial-gradient(circle at 75% -8%, color-mix(in srgb, var(--primary) 8%, transparent), transparent 31rem),
+      linear-gradient(180deg, color-mix(in srgb, var(--background) 82%, white), var(--background) 22rem);
+  }
+
+  .dark .app-shell {
+    background:
+      radial-gradient(circle at 75% -8%, color-mix(in srgb, var(--primary) 11%, transparent), transparent 34rem),
+      var(--background);
+  }
+
+  .skip-link {
+    position: fixed;
+    left: 1rem;
+    top: 0.75rem;
+    z-index: 100;
+    transform: translateY(-5rem);
+    border-radius: 0.625rem;
+    background: var(--primary);
+    color: var(--primary-foreground);
+    padding: 0.625rem 0.875rem;
+    font-size: 0.875rem;
+    font-weight: 600;
+    box-shadow: 0 10px 30px rgba(8, 39, 76, 0.2);
+    transition: transform 150ms ease;
+  }
+
+  .skip-link:focus {
+    transform: translateY(0);
+  }
+
+  .shadow-card {
+    box-shadow:
+      0 1px 2px rgba(25, 45, 72, 0.04),
+      0 8px 24px -18px rgba(25, 45, 72, 0.35);
+  }
+
+  .dark .shadow-card {
+    box-shadow:
+      0 1px 2px rgba(0, 0, 0, 0.3),
+      0 12px 30px -20px rgba(0, 0, 0, 0.8);
+  }
+
+  .shadow-card-hover {
+    transition:
+      border-color 180ms ease,
+      box-shadow 180ms ease,
+      transform 180ms ease;
+  }
+
+  .shadow-card-hover:hover {
+    box-shadow:
+      0 2px 4px rgba(25, 45, 72, 0.04),
+      0 16px 34px -22px rgba(20, 69, 119, 0.38);
+    transform: translateY(-2px);
+  }
+
+  .dark .shadow-card-hover:hover {
+    box-shadow:
+      0 2px 6px rgba(0, 0, 0, 0.3),
+      0 18px 36px -22px rgba(0, 0, 0, 0.9);
+  }
+
+  .text-pretty {
+    text-wrap: pretty;
+  }
+}
+
+@media (max-width: 767px) {
+  input,
+  textarea,
+  select {
+    font-size: 16px !important;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  *,
+  ::before,
+  ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
+
+  .shadow-card-hover:hover {
+    transform: none;
+  }
+}
