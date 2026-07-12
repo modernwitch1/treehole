@@ -1,6 +1,11 @@
-import { PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
-import { BadRequestException, ForbiddenException, Injectable } from '@nestjs/common';
-import { randomUUID } from 'crypto';
+import { GetObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+import { createHash, randomUUID } from 'crypto';
 import { extname } from 'path';
 import sharp from 'sharp';
 import { AppConfig } from '../config/app.config';
@@ -25,6 +30,75 @@ export class UploadService {
 
   async uploadChatroomImage(file: Express.Multer.File, userId: bigint) {
     return this.uploadPublicFile(file, 'chatrooms', userId);
+  }
+
+  async getPublicFile(folder: string, filename: string) {
+    if (!['posts', 'chatrooms'].includes(folder)) {
+      throw new NotFoundException('图片不存在');
+    }
+    if (!/^[A-Za-z0-9_-]+\.(?:jpg|png)$/.test(filename)) {
+      throw new NotFoundException('图片不存在');
+    }
+    const key = `${folder}/${filename}`;
+    const upload = await this.prisma.upload.findUnique({
+      where: { s3Key: key },
+      select: { moderationStatus: true },
+    });
+    if (!upload || upload.moderationStatus !== 'passed') {
+      throw new NotFoundException('图片仍在审核或已被下架');
+    }
+
+    try {
+      const object = await this.getS3Client().send(
+        new GetObjectCommand({
+          Bucket: this.config.get('S3_UPLOADS_BUCKET'),
+          Key: key,
+        }),
+      );
+      if (!object.Body) {
+        throw new NotFoundException('图片不存在');
+      }
+      return {
+        body: Buffer.from(await object.Body.transformToByteArray()),
+        contentType: object.ContentType ?? 'application/octet-stream',
+        cacheControl: 'private, no-store',
+      };
+    } catch (error) {
+      if (error instanceof NotFoundException) {
+        throw error;
+      }
+      throw new NotFoundException('图片不存在');
+    }
+  }
+
+  async getModerationFile(id: string) {
+    const upload = await this.prisma.upload.findUnique({
+      where: { id },
+      select: { s3Key: true, mimeType: true },
+    });
+    if (!upload) {
+      throw new NotFoundException('图片不存在');
+    }
+    try {
+      const object = await this.getS3Client().send(
+        new GetObjectCommand({
+          Bucket: this.config.get('S3_UPLOADS_BUCKET'),
+          Key: upload.s3Key,
+        }),
+      );
+      if (!object.Body) {
+        throw new NotFoundException('图片不存在');
+      }
+      return {
+        body: Buffer.from(await object.Body.transformToByteArray()),
+        contentType: object.ContentType ?? upload.mimeType,
+      };
+    } catch (error) {
+      if (error instanceof NotFoundException) {
+        throw error;
+      }
+      throw new NotFoundException('图片不存在');
+    }
   }
 
   private async uploadPublicFile(
@@ -54,19 +128,24 @@ export class UploadService {
 
     const processed = await this.reencodeImage(file.buffer);
     const key = `${folder}/${Date.now()}-${randomUUID()}${processed.ext}`;
+    const isPrivateEvidence = folder === 'registrations';
     await this.getS3Client().send(
       new PutObjectCommand({
         Bucket: this.config.get('S3_UPLOADS_BUCKET'),
         Key: key,
         Body: processed.buffer,
         ContentType: processed.mimeType,
-        CacheControl: 'public, max-age=31536000, immutable',
+        CacheControl: isPrivateEvidence ? 'private, no-store' : 'private, max-age=300',
         ContentDisposition: 'inline',
       }),
     );
 
     if (userId) {
-      await this.prisma.upload.create({
+      const moderationStatus =
+        this.config.isProduction || this.config.get('IMAGE_MODERATION_ENABLED')
+          ? 'pending'
+          : 'passed';
+      const upload = await this.prisma.upload.create({
         data: {
           userId,
           s3Key: key,
@@ -74,12 +153,20 @@ export class UploadService {
           sizeBytes: processed.buffer.length,
           width: processed.width,
           height: processed.height,
-          moderationStatus: 'passed',
+          moderationStatus,
+          contentHash: createHash('sha256').update(processed.buffer).digest('hex'),
         },
       });
+      return {
+        url: `${this.config.get('CDN_BASE_URL').replace(/\/+$/, '')}/${key}`,
+        moderationStatus: upload.moderationStatus,
+      };
     }
 
-    return { url: `${this.config.get('CDN_BASE_URL').replace(/\/+$/, '')}/${key}` };
+    return {
+      url: `${this.config.get('CDN_BASE_URL').replace(/\/+$/, '')}/${key}`,
+      moderationStatus: 'pending' as const,
+    };
   }
 
   private getS3Client() {

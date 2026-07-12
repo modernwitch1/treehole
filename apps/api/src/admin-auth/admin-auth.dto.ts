@@ -22,3 +22,10 @@ export class TotpCodeDto {
   @Matches(/^\d{6}$/)
   code!: string;
 }
+
+export class SetupTotpDto {
+  @IsString()
+  @MinLength(1)
+  @MaxLength(128)
+  currentPassword!: string;
+}

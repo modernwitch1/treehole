@@ -90,7 +90,7 @@ export default function PostPage({ params }: PageProps) {
   return (
     <div className="flex-1 w-full max-w-full">
       <div className="py-6 px-4 md:px-6">
-        <PostCard post={post} />
+        <PostCard post={post} variant="detail" />
 
         <div className="mt-8">
           <h3 className="text-lg font-medium mb-4">评论</h3>

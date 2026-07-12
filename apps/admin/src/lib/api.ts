@@ -24,8 +24,13 @@ import {
 } from './mock-store';
 import type {
   AdminAuditLog,
+  AdminAppeal,
+  AdminAppealStatus,
   AdminComment,
   AdminCurrentUser,
+  AdminDirectMessageTrace,
+  AdminModerationCase,
+  AdminPendingUpload,
   AdminPost,
   AdminRegistrationRequest,
   AdminReport,
@@ -33,6 +38,10 @@ import type {
   AdminUser,
   BoardApplication,
   ContentStatus,
+  ModerationCaseStatus,
+  ModerationDecision,
+  ModerationSurface,
+  PaginatedResponse,
   ReportStatus,
   SensitiveWord,
   SensitiveWordAction,
@@ -70,7 +79,12 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     throw new Error(body.message ?? res.statusText);
   }
   const text = await res.text();
-  return (text ? JSON.parse(text) : {}) as T;
+  const result = (text ? JSON.parse(text) : {}) as T;
+  const method = (init?.method ?? 'GET').toUpperCase();
+  if (typeof window !== 'undefined' && !['GET', 'HEAD', 'OPTIONS'].includes(method)) {
+    window.dispatchEvent(new Event('admin:stats-changed'));
+  }
+  return result;
 }
 
 // ============================================================
@@ -100,6 +114,53 @@ export async function adminLogout(): Promise<{ ok: true }> {
     return { ok: true };
   }
   return request('/admin/logout', { method: 'POST' });
+}
+
+export async function getAdmin2faStatus(): Promise<{
+  enabled: boolean;
+  personalEnabled: boolean;
+  systemFallback: boolean;
+}> {
+  if (USE_MOCK) return { enabled: false, personalEnabled: false, systemFallback: false };
+  return request('/admin/2fa/status');
+}
+
+export async function setupAdmin2fa(currentPassword: string): Promise<{
+  secret: string;
+  provisioningUri: string;
+  qrCodeUrl: null;
+}> {
+  if (USE_MOCK) {
+    return { secret: 'MOCKTOTPSECRET', provisioningUri: 'otpauth://totp/mock', qrCodeUrl: null };
+  }
+  return request('/admin/2fa/setup', {
+    method: 'POST',
+    body: JSON.stringify({ currentPassword }),
+  });
+}
+
+export async function confirmAdmin2fa(code: string): Promise<{
+  ok: true;
+  message: string;
+  requiresRelogin: boolean;
+}> {
+  if (USE_MOCK) return { ok: true, message: '2FA已启用', requiresRelogin: false };
+  return request('/admin/2fa/confirm', {
+    method: 'POST',
+    body: JSON.stringify({ code }),
+  });
+}
+
+export async function disableAdmin2fa(code: string): Promise<{
+  ok: true;
+  message: string;
+  requiresRelogin: boolean;
+}> {
+  if (USE_MOCK) return { ok: true, message: '2FA已禁用', requiresRelogin: false };
+  return request('/admin/2fa/disable', {
+    method: 'POST',
+    body: JSON.stringify({ code }),
+  });
 }
 
 // ============================================================
@@ -133,6 +194,9 @@ export async function getStats(): Promise<AdminStats> {
       ...MOCK_STATS,
       pendingRegistrations: pending,
       openReports,
+      pendingReview:
+        loadPosts().filter((item) => item.status === 'pending_review').length +
+        loadComments().filter((item) => item.status === 'pending_review').length,
     });
   }
   return request('/admin/stats');
@@ -150,7 +214,13 @@ export async function listUsers(
     page?: number;
     pageSize?: number;
   } = {},
-): Promise<{ items: AdminUser[]; total: number; page: number; pageSize: number; totalPages: number }> {
+): Promise<{
+  items: AdminUser[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+}> {
   if (USE_MOCK) {
     let users = loadUsers();
     if (opts.q) {
@@ -182,28 +252,35 @@ export async function listUsers(
   return request(`/admin/users?${params.toString()}`);
 }
 
-export async function suspendUser(id: string): Promise<{ ok: true }> {
+export async function suspendUser(
+  id: string,
+  reason: string,
+  days = 7,
+): Promise<{ ok: true }> {
   if (USE_MOCK) {
     await new Promise((r) => setTimeout(r, 200));
     const users = loadUsers();
     const user = users.find((u) => u.id === id);
     if (user) {
       user.status = 'suspended';
-      user.suspendedUntil = new Date(Date.now() + 7 * 86400 * 1000).toISOString();
+      user.suspendedUntil = new Date(Date.now() + days * 86400 * 1000).toISOString();
       saveUsers(users);
       appendAuditLog({
         action: 'user.suspend',
         targetType: 'user',
         targetId: id,
-        metadata: { username: user.username, days: 7 },
+        metadata: { username: user.username, days, reason },
       });
     }
     return { ok: true };
   }
-  return request(`/admin/users/${id}/suspend`, { method: 'POST' });
+  return request(`/admin/users/${id}/suspend`, {
+    method: 'POST',
+    body: JSON.stringify({ reason, days }),
+  });
 }
 
-export async function banUser(id: string): Promise<{ ok: true }> {
+export async function banUser(id: string, reason: string): Promise<{ ok: true }> {
   if (USE_MOCK) {
     await new Promise((r) => setTimeout(r, 200));
     const users = loadUsers();
@@ -215,15 +292,18 @@ export async function banUser(id: string): Promise<{ ok: true }> {
         action: 'user.ban',
         targetType: 'user',
         targetId: id,
-        metadata: { username: user.username },
+        metadata: { username: user.username, reason },
       });
     }
     return { ok: true };
   }
-  return request(`/admin/users/${id}/ban`, { method: 'POST' });
+  return request(`/admin/users/${id}/ban`, {
+    method: 'POST',
+    body: JSON.stringify({ reason }),
+  });
 }
 
-export async function unbanUser(id: string): Promise<{ ok: true }> {
+export async function unbanUser(id: string, reason: string): Promise<{ ok: true }> {
   if (USE_MOCK) {
     await new Promise((r) => setTimeout(r, 200));
     const users = loadUsers();
@@ -236,12 +316,15 @@ export async function unbanUser(id: string): Promise<{ ok: true }> {
         action: 'user.unban',
         targetType: 'user',
         targetId: id,
-        metadata: { username: user.username },
+        metadata: { username: user.username, reason },
       });
     }
     return { ok: true };
   }
-  return request(`/admin/users/${id}/unban`, { method: 'POST' });
+  return request(`/admin/users/${id}/unban`, {
+    method: 'POST',
+    body: JSON.stringify({ reason }),
+  });
 }
 
 export async function setUserRole(id: string, role: 'moderator' | 'user'): Promise<{ ok: true }> {
@@ -272,7 +355,15 @@ export async function setUserRole(id: string, role: 'moderator' | 'user'): Promi
 // Reports
 // ============================================================
 
-export async function listReports(opts: { status?: ReportStatus; page?: number; pageSize?: number } = {}): Promise<{ items: AdminReport[]; total: number; page: number; pageSize: number; totalPages: number }> {
+export async function listReports(
+  opts: { status?: ReportStatus; page?: number; pageSize?: number } = {},
+): Promise<{
+  items: AdminReport[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+}> {
   if (USE_MOCK) {
     let reports = loadReports();
     if (opts.status) reports = reports.filter((r) => r.status === opts.status);
@@ -349,9 +440,36 @@ export async function reviewReport(
 // Posts / Comments — 内容管理
 // ============================================================
 
-export async function listAdminPosts(opts: { page?: number; pageSize?: number } = {}): Promise<{ items: AdminPost[]; total: number; page: number; pageSize: number; totalPages: number }> {
+export async function listAdminPosts(
+  opts: {
+    q?: string;
+    status?: ContentStatus;
+    reported?: boolean;
+    boardSlug?: string;
+    page?: number;
+    pageSize?: number;
+  } = {},
+): Promise<{
+  items: AdminPost[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+}> {
   if (USE_MOCK) {
-    const posts = loadPosts();
+    let posts = loadPosts();
+    const q = opts.q?.trim().toLowerCase();
+    if (q) {
+      posts = posts.filter(
+        (post) =>
+          post.title.toLowerCase().includes(q) ||
+          post.excerpt.toLowerCase().includes(q) ||
+          post.boardName.toLowerCase().includes(q),
+      );
+    }
+    if (opts.status) posts = posts.filter((post) => post.status === opts.status);
+    if (opts.reported) posts = posts.filter((post) => post.reportCount > 0);
+    if (opts.boardSlug) posts = posts.filter((post) => post.boardSlug === opts.boardSlug);
     const page = opts.page ?? 1;
     const pageSize = opts.pageSize ?? 20;
     const start = (page - 1) * pageSize;
@@ -365,14 +483,41 @@ export async function listAdminPosts(opts: { page?: number; pageSize?: number } 
     });
   }
   const params = new URLSearchParams();
+  if (opts.q) params.set('q', opts.q);
+  if (opts.status) params.set('status', opts.status);
+  if (opts.reported) params.set('reported', 'true');
+  if (opts.boardSlug) params.set('boardSlug', opts.boardSlug);
   if (opts.page) params.set('page', String(opts.page));
   if (opts.pageSize) params.set('pageSize', String(opts.pageSize));
   return request(`/admin/posts?${params.toString()}`);
 }
 
-export async function listAdminComments(opts: { page?: number; pageSize?: number } = {}): Promise<{ items: AdminComment[]; total: number; page: number; pageSize: number; totalPages: number }> {
+export async function listAdminComments(
+  opts: {
+    q?: string;
+    status?: ContentStatus;
+    reported?: boolean;
+    page?: number;
+    pageSize?: number;
+  } = {},
+): Promise<{
+  items: AdminComment[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+}> {
   if (USE_MOCK) {
-    const comments = loadComments();
+    let comments = loadComments();
+    const q = opts.q?.trim().toLowerCase();
+    if (q) {
+      comments = comments.filter(
+        (comment) =>
+          comment.excerpt.toLowerCase().includes(q) || comment.postTitle.toLowerCase().includes(q),
+      );
+    }
+    if (opts.status) comments = comments.filter((comment) => comment.status === opts.status);
+    if (opts.reported) comments = comments.filter((comment) => comment.reportCount > 0);
     const page = opts.page ?? 1;
     const pageSize = opts.pageSize ?? 20;
     const start = (page - 1) * pageSize;
@@ -386,6 +531,9 @@ export async function listAdminComments(opts: { page?: number; pageSize?: number
     });
   }
   const params = new URLSearchParams();
+  if (opts.q) params.set('q', opts.q);
+  if (opts.status) params.set('status', opts.status);
+  if (opts.reported) params.set('reported', 'true');
   if (opts.page) params.set('page', String(opts.page));
   if (opts.pageSize) params.set('pageSize', String(opts.pageSize));
   return request(`/admin/comments?${params.toString()}`);
@@ -402,6 +550,12 @@ export async function revealContentAuthor(
   id: string,
 ): Promise<RevealedIdentity> {
   if (USE_MOCK) {
+    appendAuditLog({
+      action: `${kind}.reveal_author`,
+      targetType: kind,
+      targetId: id,
+      metadata: { access: 'superadmin-direct' },
+    });
     return {
       id: 'mock-author',
       username: '浙小商Mock',
@@ -409,7 +563,9 @@ export async function revealContentAuthor(
     };
   }
   const path = kind === 'post' ? `/admin/posts/${id}/identity` : `/admin/comments/${id}/identity`;
-  return request(path);
+  return request(path, {
+    method: 'POST',
+  });
 }
 
 async function mutatePost(
@@ -582,11 +738,285 @@ export async function applyContentAction(
   }
 }
 
+export async function batchContentAction(
+  kind: 'post' | 'comment',
+  ids: string[],
+  action: 'approve' | 'hide',
+): Promise<{ ok: true; processed: number }> {
+  const uniqueIds = [...new Set(ids)];
+  if (uniqueIds.length === 0 || uniqueIds.length > 100) {
+    throw new Error('一次只能处理 1 到 100 条内容');
+  }
+  if (USE_MOCK) {
+    if (kind === 'post') {
+      const posts = loadPosts();
+      const found = posts.filter((post) => uniqueIds.includes(post.id));
+      if (found.length !== uniqueIds.length) throw new Error('部分内容不存在，请刷新后重试');
+      for (const post of found) {
+        if (post.status !== 'deleted') post.status = action === 'approve' ? 'published' : 'hidden';
+      }
+      savePosts(posts);
+    } else {
+      const comments = loadComments();
+      const found = comments.filter((comment) => uniqueIds.includes(comment.id));
+      if (found.length !== uniqueIds.length) throw new Error('部分内容不存在，请刷新后重试');
+      for (const comment of found) {
+        if (comment.status !== 'deleted') {
+          comment.status = action === 'approve' ? 'published' : 'hidden';
+        }
+      }
+      saveComments(comments);
+    }
+    appendAuditLog({
+      action: `content.batch.${action}`,
+      targetType: kind,
+      metadata: { count: uniqueIds.length, ids: uniqueIds.join(',') },
+    });
+    return { ok: true, processed: uniqueIds.length };
+  }
+  return request('/admin/content/batch', {
+    method: 'POST',
+    body: JSON.stringify({ kind, ids: uniqueIds, action }),
+  });
+}
+
+// ============================================================
+// Unified moderation queue
+// ============================================================
+
+export async function listModerationCases(
+  opts: {
+    caseId?: string;
+    status?: ModerationCaseStatus;
+    surface?: ModerationSurface;
+    minRisk?: number;
+    assignedToMe?: boolean;
+    page?: number;
+    pageSize?: number;
+  } = {},
+): Promise<{
+  items: AdminModerationCase[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+}> {
+  if (USE_MOCK) {
+    return {
+      items: [],
+      total: 0,
+      page: opts.page ?? 1,
+      pageSize: opts.pageSize ?? 20,
+      totalPages: 0,
+    };
+  }
+  const params = new URLSearchParams();
+  if (opts.caseId) params.set('caseId', opts.caseId);
+  if (opts.status) params.set('status', opts.status);
+  if (opts.surface) params.set('surface', opts.surface);
+  if (opts.minRisk !== undefined) params.set('minRisk', String(opts.minRisk));
+  if (opts.assignedToMe) params.set('assignedToMe', 'true');
+  if (opts.page) params.set('page', String(opts.page));
+  if (opts.pageSize) params.set('pageSize', String(opts.pageSize));
+  return request(`/admin/moderation/cases?${params.toString()}`);
+}
+
+export async function claimModerationCase(id: string, version: number): Promise<{ ok: true }> {
+  if (USE_MOCK) return { ok: true };
+  return request(`/admin/moderation/cases/${id}/claim`, {
+    method: 'POST',
+    body: JSON.stringify({ version }),
+  });
+}
+
+export async function decideModerationCase(
+  id: string,
+  input: {
+    version: number;
+    decision: ModerationDecision;
+    note: string;
+    sanctionDays?: number;
+  },
+): Promise<{ ok: true }> {
+  if (USE_MOCK) return { ok: true };
+  return request(`/admin/moderation/cases/${id}/decision`, {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+}
+
+export async function revealModerationCaseAuthor(id: string): Promise<RevealedIdentity> {
+  if (USE_MOCK) {
+    throw new Error('模拟模式不提供真实身份溯源');
+  }
+  return request(`/admin/moderation/cases/${id}/identity`, {
+    method: 'POST',
+  });
+}
+
+// ============================================================
+// Superadmin direct-message trace
+// ============================================================
+
+export interface DirectMessageTraceFilters {
+  messageId?: string;
+  conversationId?: string;
+  userId?: string;
+}
+
+export async function traceDirectMessages(
+  opts: DirectMessageTraceFilters & { page?: number; pageSize?: number },
+): Promise<PaginatedResponse<AdminDirectMessageTrace>> {
+  const filters: DirectMessageTraceFilters = {
+    messageId: opts.messageId?.trim() || undefined,
+    conversationId: opts.conversationId?.trim() || undefined,
+    userId: opts.userId?.trim() || undefined,
+  };
+  const exactIds = [filters.messageId, filters.conversationId, filters.userId].filter(
+    (value): value is string => Boolean(value),
+  );
+  if (exactIds.length === 0) {
+    throw new Error('必须填写消息 ID、会话 ID 或用户 UID 中的至少一项');
+  }
+  for (const value of exactIds) {
+    if (!/^[1-9]\d{0,18}$/.test(value) || BigInt(value) > 9_223_372_036_854_775_807n) {
+      throw new Error('溯源条件必须是有效的正整数 ID');
+    }
+  }
+  const page = opts.page ?? 1;
+  const pageSize = opts.pageSize ?? 20;
+  if (!Number.isInteger(page) || page < 1 || page > 1_000_000) {
+    throw new Error('页码超出有效范围');
+  }
+  if (!Number.isInteger(pageSize) || pageSize < 1 || pageSize > 100) {
+    throw new Error('每页数量必须是 1 到 100 的整数');
+  }
+
+  if (USE_MOCK) {
+    return { items: [], total: 0, page, pageSize, totalPages: 0 };
+  }
+  const params = new URLSearchParams();
+  if (filters.messageId) params.set('messageId', filters.messageId);
+  if (filters.conversationId) params.set('conversationId', filters.conversationId);
+  if (filters.userId) params.set('userId', filters.userId);
+  params.set('page', String(page));
+  params.set('pageSize', String(pageSize));
+  return request(`/admin/trace/direct-messages?${params.toString()}`, { cache: 'no-store' });
+}
+
+// ============================================================
+// Image moderation
+// ============================================================
+
+export async function listPendingUploads(opts: { page?: number; pageSize?: number } = {}): Promise<{
+  items: AdminPendingUpload[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+}> {
+  if (USE_MOCK) {
+    return {
+      items: [],
+      total: 0,
+      page: opts.page ?? 1,
+      pageSize: opts.pageSize ?? 20,
+      totalPages: 0,
+    };
+  }
+  const params = new URLSearchParams();
+  if (opts.page) params.set('page', String(opts.page));
+  if (opts.pageSize) params.set('pageSize', String(opts.pageSize));
+  return request(`/admin/uploads?${params.toString()}`);
+}
+
+/**
+ * 图片预览必须直接向持有管理员 Cookie 的 API 域发起带凭据请求。
+ * 返回 object URL，调用方卸载时负责 URL.revokeObjectURL。
+ */
+export async function fetchAdminUploadPreview(previewUrl: string): Promise<string> {
+  if (USE_MOCK) return previewUrl;
+  const base = apiBase().replace(/\/+$/, '');
+  const url = /^https?:\/\//i.test(previewUrl) ? previewUrl : `${base}${previewUrl}`;
+  const response = await fetch(url, {
+    credentials: 'include',
+    cache: 'no-store',
+    headers: { Accept: 'image/*' },
+  });
+  if (!response.ok) {
+    throw new Error(
+      response.status === 401 ? '图片预览凭据已失效，请重新登录' : '图片预览加载失败',
+    );
+  }
+  const blob = await response.blob();
+  if (!blob.type.startsWith('image/')) throw new Error('预览响应不是有效图片');
+  return URL.createObjectURL(blob);
+}
+
+export async function reviewUpload(
+  id: string,
+  action: 'approve' | 'reject',
+  note?: string,
+): Promise<{ ok: true }> {
+  if (USE_MOCK) return { ok: true };
+  return request(`/admin/uploads/${id}`, {
+    method: 'POST',
+    body: JSON.stringify({ action, note: note?.trim() || undefined }),
+  });
+}
+
+// ============================================================
+// Sanction appeals
+// ============================================================
+
+export async function listAppeals(
+  opts: { status?: AdminAppealStatus; page?: number; pageSize?: number } = {},
+): Promise<{
+  items: AdminAppeal[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+}> {
+  if (USE_MOCK) {
+    return {
+      items: [],
+      total: 0,
+      page: opts.page ?? 1,
+      pageSize: opts.pageSize ?? 20,
+      totalPages: 0,
+    };
+  }
+  const params = new URLSearchParams();
+  if (opts.status) params.set('status', opts.status);
+  if (opts.page) params.set('page', String(opts.page));
+  if (opts.pageSize) params.set('pageSize', String(opts.pageSize));
+  return request(`/admin/appeals?${params.toString()}`);
+}
+
+export async function reviewAppeal(
+  id: string,
+  action: 'approve' | 'reject',
+  note: string,
+): Promise<{ ok: true }> {
+  if (USE_MOCK) return { ok: true };
+  return request(`/admin/appeals/${id}`, {
+    method: 'POST',
+    body: JSON.stringify({ action, note }),
+  });
+}
+
 // ============================================================
 // Audit logs
 // ============================================================
 
-export async function listAuditLogs(opts: { page?: number; pageSize?: number } = {}): Promise<{ items: AdminAuditLog[]; total: number; page: number; pageSize: number; totalPages: number }> {
+export async function listAuditLogs(opts: { page?: number; pageSize?: number } = {}): Promise<{
+  items: AdminAuditLog[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+}> {
   if (USE_MOCK) {
     const logs = loadAuditLogs();
     const page = opts.page ?? 1;
@@ -611,7 +1041,13 @@ export async function listAuditLogs(opts: { page?: number; pageSize?: number } =
 // Announcements (站内通知)
 // ============================================================
 
-export async function listAnnouncements(opts: { page?: number; pageSize?: number } = {}): Promise<{ items: SystemAnnouncement[]; total: number; page: number; pageSize: number; totalPages: number }> {
+export async function listAnnouncements(opts: { page?: number; pageSize?: number } = {}): Promise<{
+  items: SystemAnnouncement[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+}> {
   if (USE_MOCK) {
     const page = opts.page ?? 1;
     const pageSize = opts.pageSize ?? 20;
@@ -724,7 +1160,13 @@ export async function listSensitiveWords(
     page?: number;
     pageSize?: number;
   } = {},
-): Promise<{ items: SensitiveWord[]; total: number; page: number; pageSize: number; totalPages: number }> {
+): Promise<{
+  items: SensitiveWord[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+}> {
   if (USE_MOCK) {
     let items = loadSensitiveWords();
     if (opts.q) {
@@ -887,17 +1329,20 @@ export interface ChatroomMessageDto {
   chatroomUid: string;
   content: string;
   createdAt: string;
-  senderIp: string;
   isFlagged: boolean;
+  moderationStatus: 'published' | 'pending_review' | 'hidden' | 'deleted';
+  isMine?: boolean;
   senderNickname: string;
   senderAvatar: string;
-  realSender?: {
-    userId: string;
-    username: string;
-    studentId: string;
-    email: string;
-    role: string;
-  };
+  senderIp?: string;
+  realSender?: AdminChatroomSenderDto;
+}
+
+export interface AdminChatroomSenderDto {
+  userId: string;
+  username: string;
+  email: string;
+  studentId: string | null;
 }
 
 export async function adminGetChatrooms(): Promise<ChatroomDetail[]> {
@@ -937,10 +1382,12 @@ export interface AdminFlaggedMessageDto {
   chatroomUid: string;
   chatroomTitle: string;
   content: string;
-  senderIp: string;
-  studentId: string;
   senderNickname: string;
+  moderationStatus: 'published' | 'pending_review' | 'hidden' | 'deleted';
+  caseId: string | null;
   createdAt: string;
+  senderIp?: string;
+  realSender?: AdminChatroomSenderDto;
 }
 
 export async function adminGetFlaggedMessages(): Promise<AdminFlaggedMessageDto[]> {
@@ -969,7 +1416,10 @@ export async function approveBoardApplication(id: string): Promise<{ ok: boolean
   return request(`/boards/${id}/approve`, { method: 'POST' });
 }
 
-export async function rejectBoardApplication(id: string, reason?: string): Promise<{ ok: boolean }> {
+export async function rejectBoardApplication(
+  id: string,
+  reason?: string,
+): Promise<{ ok: boolean }> {
   if (USE_MOCK) {
     await new Promise((r) => setTimeout(r, 300));
     return { ok: true };

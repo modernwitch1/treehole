@@ -18,6 +18,7 @@ interface PostListInfiniteProps {
   q?: string;
   currentUserRole?: UserRole | null;
   isLoggedIn?: boolean;
+  layout?: 'list' | 'grid';
 }
 
 export function PostListInfinite({
@@ -28,6 +29,7 @@ export function PostListInfinite({
   q,
   currentUserRole,
   isLoggedIn,
+  layout = 'list',
 }: PostListInfiniteProps) {
   const [posts, setPosts] = useState<Post[]>(initialPosts);
   const [nextCursor, setNextCursor] = useState<string | undefined>(initialNextCursor);
@@ -101,15 +103,18 @@ export function PostListInfinite({
   }, [hasMore, isLoading, nextCursor, loadMore]);
 
   return (
-    <div className="space-y-2">
-      {posts.map((post) => (
-        <PostCard
-          key={post.id}
-          post={post}
-          currentUserRole={currentUserRole}
-          isLoggedIn={isLoggedIn}
-        />
-      ))}
+    <div className="space-y-3">
+      <div className={layout === 'grid' ? 'grid grid-cols-1 items-start gap-3 sm:grid-cols-2 xl:grid-cols-3' : 'space-y-2'}>
+        {posts.map((post) => (
+          <PostCard
+            key={post.id}
+            post={post}
+            currentUserRole={currentUserRole}
+            isLoggedIn={isLoggedIn}
+            variant={layout === 'grid' ? 'compact' : 'default'}
+          />
+        ))}
+      </div>
 
       {/* Intersection observer target */}
       {hasMore && <div ref={observerRef} className="h-4" />}

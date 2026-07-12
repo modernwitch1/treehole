@@ -2,7 +2,7 @@
 
 import * as React from 'react';
 import Link from 'next/link';
-import Image from 'next/image';
+import { BrandMark } from '@/components/brand-mark';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -12,6 +12,7 @@ import { Loader2, CheckCircle2, Upload, Mail, Hash } from 'lucide-react';
 import { submitRegistration, uploadScreenshot, verifyEmailCode } from '@/lib/api';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import { COMMUNITY_RULES_VERSION } from '@/lib/community-safety';
 
 type RegMethod = 'email' | 'screenshot';
 type Step = 'form' | 'verifying' | 'submitting' | 'done';
@@ -49,6 +50,8 @@ export default function RegisterPage() {
   const [code, setCode] = React.useState('');
   const [result, setResult] = React.useState<{ message: string } | null>(null);
   const [codeError, setCodeError] = React.useState('');
+  const [acceptTerms, setAcceptTerms] = React.useState(false);
+  const [acceptCommunityRules, setAcceptCommunityRules] = React.useState(false);
   const passwordStrength = React.useMemo(() => getPasswordStrength(password), [password]);
 
   // ============================================================
@@ -84,6 +87,10 @@ export default function RegisterPage() {
       toast.error('请上传个人档案截图');
       return;
     }
+    if (!acceptTerms || !acceptCommunityRules) {
+      toast.error('请先阅读并同意用户协议、隐私政策和社区规则');
+      return;
+    }
 
     setStep('submitting');
 
@@ -101,6 +108,9 @@ export default function RegisterPage() {
         realName: method === 'screenshot' ? realName.trim() : undefined,
         method,
         screenshotUrl,
+        acceptTerms,
+        acceptCommunityRules,
+        policyVersion: COMMUNITY_RULES_VERSION,
       });
 
       if (method === 'email') {
@@ -115,8 +125,8 @@ export default function RegisterPage() {
         });
         setStep('done');
       }
-    } catch {
-      toast.error('提交失败,请重试');
+    } catch (error) {
+      toast.error((error as Error).message || '提交失败，请重试');
       setStep('form');
     }
   }
@@ -150,14 +160,7 @@ export default function RegisterPage() {
     return (
       <Card className="border-border/60 shadow-card">
         <CardHeader className="space-y-2 text-center">
-          <Image
-            src="/logo.webp"
-            alt="浙工商树洞"
-            width={48}
-            height={48}
-            priority
-            className="mx-auto size-12 select-none lg:hidden"
-          />
+        <BrandMark className="mx-auto size-12 lg:hidden" />
           <div className="mx-auto flex size-12 items-center justify-center rounded-full bg-green-500/10">
             <CheckCircle2 className="size-6 text-green-500" />
           </div>
@@ -183,14 +186,7 @@ export default function RegisterPage() {
     return (
       <Card className="border-border/60 shadow-card">
         <CardHeader className="space-y-2 text-center">
-          <Image
-            src="/logo.webp"
-            alt="浙工商树洞"
-            width={48}
-            height={48}
-            priority
-            className="mx-auto size-12 select-none lg:hidden"
-          />
+        <BrandMark className="mx-auto size-12 lg:hidden" />
           <div className="mx-auto flex size-12 items-center justify-center rounded-full bg-primary/10">
             <Hash className="size-6 text-primary" />
           </div>
@@ -241,14 +237,7 @@ export default function RegisterPage() {
   return (
     <Card className="border-border/60 shadow-card">
       <CardHeader className="space-y-2 text-center">
-        <Image
-          src="/logo.webp"
-          alt="浙工商树洞"
-          width={48}
-          height={48}
-          priority
-          className="mx-auto size-12 select-none lg:hidden"
-        />
+        <BrandMark className="mx-auto size-12 lg:hidden" />
         <CardTitle className="text-2xl tracking-tight">加入浙工商树洞</CardTitle>
         <CardDescription>仅限浙商大学生 · 需验证身份</CardDescription>
       </CardHeader>
@@ -411,7 +400,14 @@ export default function RegisterPage() {
           <Separator />
 
           <div className="flex items-start gap-2 rounded-md bg-muted/50 p-3 text-xs text-muted-foreground">
-            <input id="terms" type="checkbox" className="mt-0.5" required />
+            <input
+              id="terms"
+              type="checkbox"
+              checked={acceptTerms}
+              onChange={(event) => setAcceptTerms(event.target.checked)}
+              className="mt-0.5"
+              required
+            />
             <Label htmlFor="terms" className="text-xs font-normal leading-relaxed">
               我已阅读并同意《
               <Link href="/terms" className="text-foreground hover:underline">
@@ -425,7 +421,29 @@ export default function RegisterPage() {
             </Label>
           </div>
 
-          <Button type="submit" className="w-full" disabled={step === 'submitting'}>
+          <div className="flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/[0.07] p-3 text-xs text-muted-foreground">
+            <input
+              id="community-rules"
+              type="checkbox"
+              checked={acceptCommunityRules}
+              onChange={(event) => setAcceptCommunityRules(event.target.checked)}
+              className="mt-0.5"
+              required
+            />
+            <Label htmlFor="community-rules" className="text-xs font-normal leading-relaxed">
+              我已阅读并同意《
+              <Link href="/rules" className="font-medium text-foreground hover:underline">
+                社区规则
+              </Link>
+              》，理解帖子、评论、私信和聊天房均受规则约束；违规内容可能被拦截、隐藏、处罚，并在涉嫌违法违规时依法依规配合调查。
+            </Label>
+          </div>
+
+          <Button
+            type="submit"
+            className="w-full"
+            disabled={step === 'submitting' || !acceptTerms || !acceptCommunityRules}
+          >
             {step === 'submitting' && <Loader2 className="mr-2 size-4 animate-spin" />}
             {step === 'submitting'
               ? '提交中…'

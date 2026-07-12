@@ -9,6 +9,8 @@ import { getConversation } from '@/lib/api';
 import { relativeTime } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import type { ConversationDetail, Message } from '@/types/api';
+import { ReportDialog } from '@/components/report-dialog';
+import { Flag } from 'lucide-react';
 
 interface ConversationPageProps {
   params: Promise<{ id: string }>;
@@ -22,6 +24,7 @@ export default function ConversationPage({ params }: ConversationPageProps) {
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState(false);
   const scrollRef = React.useRef<HTMLDivElement>(null);
+  const refreshInFlightRef = React.useRef(false);
 
   const load = React.useCallback(() => {
     setLoading(true);
@@ -46,13 +49,42 @@ export default function ConversationPage({ params }: ConversationPageProps) {
     load();
   }, [load]);
 
+  const refresh = React.useCallback(async () => {
+    if (refreshInFlightRef.current) return;
+    refreshInFlightRef.current = true;
+    try {
+      const next = await getConversation(id);
+      if (next) {
+        setDetail(next);
+        setMessages(next.messages);
+        setError(false);
+      }
+    } catch {
+      // Keep the last successful snapshot during transient polling failures.
+    } finally {
+      refreshInFlightRef.current = false;
+    }
+  }, [id]);
+
+  React.useEffect(() => {
+    const poll = () => {
+      if (document.visibilityState === 'visible') void refresh();
+    };
+    const interval = window.setInterval(poll, 15_000);
+    document.addEventListener('visibilitychange', poll);
+    return () => {
+      window.clearInterval(interval);
+      document.removeEventListener('visibilitychange', poll);
+    };
+  }, [refresh]);
+
   React.useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   }, [messages]);
 
-  function handleSent(text: string) {
+  function handleSent(text: string, moderationStatus: 'published' | 'pending_review') {
     const newMsg: Message = {
       id: `local-${Date.now()}`,
       conversationId: id,
@@ -60,7 +92,7 @@ export default function ConversationPage({ params }: ConversationPageProps) {
       contentMd: text,
       contentHtml: text,
       createdAt: new Date().toISOString(),
-      status: 'sent',
+      status: moderationStatus === 'pending_review' ? 'pending_review' : 'sent',
     };
     setMessages((prev) => [...prev, newMsg]);
   }
@@ -114,12 +146,15 @@ export default function ConversationPage({ params }: ConversationPageProps) {
                     key={m.id}
                     isMine={m.sender === 'me'}
                     partnerColor={conversation.partner.color}
+                    pending={m.status === 'pending_review'}
                   >
                     <div className="whitespace-pre-wrap text-sm leading-relaxed">{m.contentMd}</div>
                     <div
                       className={cn(
                         'mt-1 text-[10px]',
-                        m.sender === 'me' ? 'text-primary-foreground/70' : 'text-muted-foreground',
+                        m.sender === 'me' && m.status !== 'pending_review'
+                          ? 'text-primary-foreground/70'
+                          : 'text-muted-foreground',
                       )}
                     >
                       {relativeTime(m.createdAt)}
@@ -128,6 +163,27 @@ export default function ConversationPage({ params }: ConversationPageProps) {
                       )}
                       {m.sender === 'me' && m.status === 'read' && (
                         <span className="ml-1">· 已读</span>
+                      )}
+                      {m.sender === 'me' && m.status === 'pending_review' && (
+                        <span className="ml-1 font-medium">· 审核中（未投递）</span>
+                      )}
+                      {m.sender === 'me' && m.status === 'not_delivered' && (
+                        <span className="ml-1 font-medium">· 未投递</span>
+                      )}
+                      {m.sender === 'partner' && (
+                        <ReportDialog
+                          targetType="direct_message"
+                          targetId={m.id}
+                          title="举报这条私信"
+                          trigger={
+                            <button
+                              type="button"
+                              className="ml-2 inline-flex items-center gap-0.5 hover:text-destructive"
+                            >
+                              <Flag className="size-2.5" /> 举报
+                            </button>
+                          }
+                        />
                       )}
                     </div>
                   </MessageBubble>
@@ -147,10 +203,12 @@ export default function ConversationPage({ params }: ConversationPageProps) {
 function MessageBubble({
   isMine,
   partnerColor,
+  pending,
   children,
 }: {
   isMine: boolean;
   partnerColor: string;
+  pending?: boolean;
   children: React.ReactNode;
 }) {
   return (
@@ -168,7 +226,9 @@ function MessageBubble({
         className={cn(
           'max-w-[78%] rounded-2xl px-3.5 py-2',
           isMine
-            ? 'rounded-br-sm bg-primary text-primary-foreground'
+            ? pending
+              ? 'rounded-br-sm border border-amber-500/40 bg-amber-500/10 text-foreground'
+              : 'rounded-br-sm bg-primary text-primary-foreground'
             : 'rounded-bl-sm bg-muted text-foreground',
         )}
       >

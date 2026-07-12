@@ -33,7 +33,10 @@ interface PostMoreMenuProps {
 
 /** "更多" 下拉,普通用户看见举报/收藏/复制链接;管理员额外看到后台入口 */
 export function PostMoreMenu({ postId, currentUserRole }: PostMoreMenuProps) {
-  const isMod = currentUserRole === 'admin' || currentUserRole === 'moderator';
+  const isMod =
+    currentUserRole === 'superadmin' ||
+    currentUserRole === 'admin' ||
+    currentUserRole === 'moderator';
 
   async function copyLink() {
     await navigator.clipboard.writeText(`${window.location.origin}/p/${postId}`);

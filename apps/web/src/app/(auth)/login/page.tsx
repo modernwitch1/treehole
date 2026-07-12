@@ -2,7 +2,7 @@
 
 import * as React from 'react';
 import Link from 'next/link';
-import Image from 'next/image';
+import { BrandMark } from '@/components/brand-mark';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -44,6 +44,12 @@ const STATUS_CONFIG: Record<
     color: 'text-orange-500',
     desc: '注册申请已过期,请重新提交',
   },
+  banned: {
+    icon: AlertTriangle,
+    label: '账号已封禁',
+    color: 'text-destructive',
+    desc: '你仍可查看处罚记录并通过受限入口提交申诉',
+  },
 };
 const USE_MOCK = process.env.NEXT_PUBLIC_USE_MOCK === 'true';
 
@@ -76,6 +82,9 @@ export default function LoginPage() {
         toast.success('登录成功!');
         router.push('/');
         router.refresh();
+      } else if (result.status === 'banned') {
+        router.push('/banned?reason=banned');
+        router.refresh();
       }
     } catch (err) {
       toast.error((err as Error).message || '查询失败,请重试');
@@ -89,14 +98,7 @@ export default function LoginPage() {
   return (
     <Card className="border-border/60 shadow-card">
       <CardHeader className="space-y-2 text-center">
-        <Image
-          src="/logo.webp"
-          alt="浙工商树洞"
-          width={48}
-          height={48}
-          priority
-          className="mx-auto size-12 select-none lg:hidden"
-        />
+        <BrandMark className="mx-auto size-12 lg:hidden" />
         <CardTitle className="text-2xl tracking-tight">欢迎回来</CardTitle>
         <CardDescription>输入学号和密码登录浙工商树洞</CardDescription>
       </CardHeader>

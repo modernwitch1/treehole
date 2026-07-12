@@ -51,8 +51,8 @@ export const MOCK_POSTS: Post[] = [
     myVote: 1,
     createdAt: hoursAgo(4),
     hasImages: true,
-    thumbnailUrl: '/浙工商校门.webp',
-    imageUrls: ['/浙工商校门.webp'],
+    thumbnailUrl: '/avatar.jpeg',
+    imageUrls: ['/avatar.jpeg'],
   },
   {
     id: '102',
@@ -85,8 +85,8 @@ export const MOCK_POSTS: Post[] = [
     myVote: 1,
     createdAt: hoursAgo(11),
     hasImages: true,
-    thumbnailUrl: '/logo.webp',
-    imageUrls: ['/logo.webp'],
+    thumbnailUrl: '/avatar.jpeg',
+    imageUrls: ['/avatar.jpeg'],
   },
   {
     id: '104',
@@ -137,8 +137,8 @@ export const MOCK_POSTS: Post[] = [
     isPinned: false,
     createdAt: hoursAgo(19),
     hasImages: true,
-    thumbnailUrl: '/浙工商校门.webp',
-    imageUrls: ['/浙工商校门.webp', '/logo.webp'],
+    thumbnailUrl: '/avatar.jpeg',
+    imageUrls: ['/avatar.jpeg'],
   },
   {
     id: '107',
@@ -355,7 +355,16 @@ export const MOCK_CURRENT_USER: CurrentUser = {
   unreadNotifications: 3,
   dmAllowed: true,
   unreadConversations: 2,
+  accountStatus: 'active',
   createdAt: new Date(2024, 8, 1).toISOString(),
+  communitySafety: {
+    policyVersion: '2026-07-11',
+    accountAgeDays: 365,
+    isNewUser: false,
+    acknowledgedToday: true,
+    shouldPrompt: false,
+    rulesUrl: '/rules',
+  },
 };
 
 // ============================================================
@@ -363,7 +372,8 @@ export const MOCK_CURRENT_USER: CurrentUser = {
 // ============================================================
 
 function dmPseudonym(name: string, color: string): DmPseudonym {
-  return { displayName: name, color };
+  const conversationCode = name.match(/[A-Z0-9]{4}/)?.[0] ?? 'DEMO';
+  return { displayName: name, color, conversationCode };
 }
 
 export const MOCK_CONVERSATIONS: Conversation[] = [

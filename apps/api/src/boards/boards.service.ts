@@ -1,14 +1,23 @@
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.module';
-import type { BoardStatus } from '@prisma/client';
+import type { BoardStatus, Prisma } from '@prisma/client';
 import { randomBytes } from 'node:crypto';
 import { RateLimitService } from '../common/security/rate-limit.service';
+import { ModerationService } from '../common/moderation.service';
+import { COMMUNITY_RULES_VERSION } from '../common/community-safety.constants';
+import type { AdminPrincipal } from '../admin-auth/admin-auth.service';
 
 @Injectable()
 export class BoardsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly rateLimit: RateLimitService,
+    private readonly moderation: ModerationService,
   ) {}
 
   async listBoards(opts?: { status?: BoardStatus }) {
@@ -68,10 +77,16 @@ export class BoardsService {
     description: string;
     reason: string;
     applicantId: bigint;
+    rulesAcknowledged: boolean;
+    ip?: string;
+    userAgent?: string;
   }) {
     const { name, description, reason, applicantId } = data;
 
     await this.rateLimit.consume('board-application-user', String(applicantId), 3, 24 * 3600);
+    if (!data.rulesAcknowledged) {
+      throw new BadRequestException('请先确认板块申请内容遵守社区规则');
+    }
     const applicant = await this.prisma.user.findUnique({
       where: { id: applicantId },
       select: { status: true, suspendedUntil: true },
@@ -104,6 +119,25 @@ export class BoardsService {
       throw new BadRequestException('申请理由最多 1000 字');
     }
 
+    const moderationContext = {
+      surface: 'post' as const,
+      authorId: applicantId,
+      ip: data.ip,
+      userAgent: data.userAgent,
+    };
+    const [moderatedName, moderatedDescription, moderatedReason] = await Promise.all([
+      this.moderation.moderateOrThrow(name.trim(), moderationContext),
+      this.moderation.moderateOrThrow(description.trim(), moderationContext),
+      this.moderation.moderateOrThrow(reason.trim(), moderationContext),
+    ]);
+    if (
+      [moderatedName, moderatedDescription, moderatedReason].some(
+        (result) => result.status === 'pending_review',
+      )
+    ) {
+      throw new BadRequestException('申请内容需要人工审核，请修改后重新提交');
+    }
+
     // 生成 slug
     const slug = this.generateSlug(name);
 
@@ -126,16 +160,28 @@ export class BoardsService {
       throw new BadRequestException('您已有待审批的申请，请等待审核');
     }
 
-    const board = await this.prisma.board.create({
-      data: {
-        slug,
-        name: name.trim(),
-        description: description.trim(),
-        applyReason: reason.trim(),
-        applicantId,
-        status: 'pending',
-        appliedAt: new Date(),
-      },
+    const board = await this.prisma.$transaction(async (tx) => {
+      const created = await tx.board.create({
+        data: {
+          slug,
+          name: moderatedName.content,
+          description: moderatedDescription.content,
+          applyReason: moderatedReason.content,
+          applicantId,
+          status: 'pending',
+          appliedAt: new Date(),
+        },
+      });
+      await tx.policyAcceptance.create({
+        data: {
+          userId: applicantId,
+          policyVersion: COMMUNITY_RULES_VERSION,
+          source: 'publish',
+          ip: data.ip && data.ip !== 'unknown' ? data.ip : null,
+          userAgent: data.userAgent?.slice(0, 512),
+        },
+      });
+      return created;
     });
 
     return {
@@ -149,7 +195,13 @@ export class BoardsService {
     };
   }
 
-  async approveBoard(boardId: string, reviewerId: bigint) {
+  async approveBoard(
+    boardId: string,
+    admin: AdminPrincipal,
+    ip: string,
+    userAgent?: string | string[],
+  ) {
+    this.assertSuperadmin(admin);
     const id = this.parseId(boardId);
     const board = await this.prisma.board.findUnique({ where: { id } });
 
@@ -160,13 +212,23 @@ export class BoardsService {
       throw new BadRequestException('该申请已处理');
     }
 
-    const updated = await this.prisma.board.update({
-      where: { id },
-      data: {
-        status: 'active',
-        reviewedBy: reviewerId,
-        reviewedAt: new Date(),
-      },
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const claimed = await tx.board.updateMany({
+        where: { id, status: 'pending' },
+        data: {
+          status: 'active',
+          reviewedBy: BigInt(admin.id),
+          reviewedAt: new Date(),
+        },
+      });
+      if (claimed.count !== 1) {
+        throw new BadRequestException('该申请已处理');
+      }
+      const result = await tx.board.findUniqueOrThrow({ where: { id } });
+      await this.auditBoardAction(tx, admin, 'board.approve', result.id, ip, userAgent, {
+        name: result.name,
+      });
+      return result;
     });
 
     return {
@@ -180,7 +242,14 @@ export class BoardsService {
     };
   }
 
-  async rejectBoard(boardId: string, reviewerId: bigint, reason?: string) {
+  async rejectBoard(
+    boardId: string,
+    admin: AdminPrincipal,
+    reason: string | undefined,
+    ip: string,
+    userAgent?: string | string[],
+  ) {
+    this.assertSuperadmin(admin);
     const id = this.parseId(boardId);
     if (reason && reason.trim().length > 500) {
       throw new BadRequestException('驳回理由最多 500 字');
@@ -194,14 +263,26 @@ export class BoardsService {
       throw new BadRequestException('该申请已处理');
     }
 
-    const updated = await this.prisma.board.update({
-      where: { id },
-      data: {
-        status: 'rejected',
-        rejectReason: reason?.trim() || '不符合板块开设要求',
-        reviewedBy: reviewerId,
-        reviewedAt: new Date(),
-      },
+    const rejectReason = reason?.trim() || '不符合板块开设要求';
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const claimed = await tx.board.updateMany({
+        where: { id, status: 'pending' },
+        data: {
+          status: 'rejected',
+          rejectReason,
+          reviewedBy: BigInt(admin.id),
+          reviewedAt: new Date(),
+        },
+      });
+      if (claimed.count !== 1) {
+        throw new BadRequestException('该申请已处理');
+      }
+      const result = await tx.board.findUniqueOrThrow({ where: { id } });
+      await this.auditBoardAction(tx, admin, 'board.reject', result.id, ip, userAgent, {
+        name: result.name,
+        reason: rejectReason,
+      });
+      return result;
     });
 
     return {
@@ -215,7 +296,8 @@ export class BoardsService {
     };
   }
 
-  async listPendingApplications() {
+  async listPendingApplications(admin: AdminPrincipal, ip: string, userAgent?: string | string[]) {
+    this.assertSuperadmin(admin);
     const boards = await this.prisma.board.findMany({
       where: { status: 'pending' },
       orderBy: { appliedAt: 'asc' },
@@ -226,6 +308,17 @@ export class BoardsService {
       },
     });
 
+    if (boards.length > 0) {
+      await this.auditBoardAction(
+        this.prisma,
+        admin,
+        'board.applications.view',
+        undefined,
+        ip,
+        userAgent,
+        { count: boards.length },
+      );
+    }
     return boards.map((board) => ({
       id: String(board.id),
       name: board.name,
@@ -241,7 +334,7 @@ export class BoardsService {
     }));
   }
 
-  private generateSlug(name: string): string {
+  private generateSlug(_name: string): string {
     // 简单的 slug 生成：使用时间戳 + 随机数
     const timestamp = Date.now().toString(36);
     const random = randomBytes(3).toString('hex');
@@ -254,5 +347,38 @@ export class BoardsService {
     } catch {
       throw new BadRequestException('无效 ID');
     }
+  }
+
+  private assertSuperadmin(admin: AdminPrincipal): void {
+    if (admin.role !== 'superadmin') {
+      throw new ForbiddenException('只有超级管理员可以管理板块申请');
+    }
+  }
+
+  private async auditBoardAction(
+    client: Pick<Prisma.TransactionClient, 'auditLog'>,
+    admin: AdminPrincipal,
+    action: string,
+    targetId: bigint | undefined,
+    ip: string,
+    userAgent: string | string[] | undefined,
+    metadata: Record<string, string | number>,
+  ): Promise<void> {
+    await client.auditLog.create({
+      data: {
+        actorId: BigInt(admin.id),
+        action,
+        targetType: 'board',
+        targetId,
+        ip: ip && ip !== 'unknown' ? ip : null,
+        userAgent: (Array.isArray(userAgent) ? userAgent.join(', ') : userAgent)?.slice(0, 512),
+        metadata: {
+          ...metadata,
+          actorId: admin.id,
+          actorUsername: admin.username,
+          actorRole: admin.role,
+        },
+      },
+    });
   }
 }

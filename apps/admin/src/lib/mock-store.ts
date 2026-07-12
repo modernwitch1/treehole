@@ -212,7 +212,7 @@ export function appendAuditLog(input: {
   const logs = loadAuditLogs();
   const entry: AdminAuditLog = {
     id: `log-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-    actor: { id: 'admin-1', username: '管理员·小何', role: 'admin' },
+    actor: { id: 'hezhong233', username: 'hezhong233', role: 'superadmin' },
     action: input.action,
     targetType: input.targetType,
     targetId: input.targetId,

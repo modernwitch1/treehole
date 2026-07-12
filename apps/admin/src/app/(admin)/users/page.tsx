@@ -182,7 +182,16 @@ export default function UsersPage() {
                     {absoluteTime(u.createdAt).slice(0, 10)}
                   </TableCell>
                   <TableCell>
-                    <UserActionsMenu user={u} onChanged={reload} />
+                    {u.role === 'superadmin' ? (
+                      <span
+                        className="text-xs font-medium text-muted-foreground"
+                        title="唯一超级管理员账号不能在用户列表中被处罚或降权"
+                      >
+                        受保护
+                      </span>
+                    ) : (
+                      <UserActionsMenu user={u} onChanged={reload} />
+                    )}
                   </TableCell>
                 </TableRow>
               ))

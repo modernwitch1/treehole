@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { DmToggle } from '@/components/dm-toggle';
 import { getCurrentUser } from '@/lib/api';
+import { AccountSanctionsPanel } from '@/components/account-sanctions-panel';
 
 export const metadata = { title: '设置' };
 
@@ -37,6 +38,8 @@ export default async function SettingsPage() {
           </div>
         </CardContent>
       </Card>
+
+      <AccountSanctionsPanel />
 
       <Card>
         <CardHeader>

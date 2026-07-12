@@ -3,7 +3,7 @@
  * 此文件唯一可信源在前端;后端 Slice 2+ 实现时如有偏差以后端为准并回写这里
  */
 
-export type UserRole = 'user' | 'moderator' | 'admin';
+export type UserRole = 'user' | 'moderator' | 'admin' | 'superadmin';
 
 export interface User {
   id: string;
@@ -14,9 +14,9 @@ export interface User {
   createdAt: string;
 }
 
-/** 匿名身份: 同一 post 内同一用户稳定; 跨 post 不同 */
+/** 公开匿名身份；所有用户统一显示为“浙小商”，真实 UID 仅后台可见。 */
 export interface AnonymousPseudonym {
-  /** 渲染用昵称, 如 "匿名 · 晨曦" 或 "楼主" */
+  /** 公开渲染昵称，固定为“浙小商”。 */
   displayName: string;
   /** 头像气泡色 (HSL/HEX/oklch) */
   color: string;
@@ -59,6 +59,7 @@ export interface Post {
   commentCount: number;
   isLocked: boolean;
   isPinned: boolean;
+  status?: 'published' | 'pending_review' | 'hidden' | 'deleted';
   /** 当前用户的投票状态: 1=赞, -1=踩, 0=未投/已撤销 */
   myVote?: 1 | -1 | 0;
   createdAt: string;
@@ -68,6 +69,12 @@ export interface Post {
   imageUrls?: string[];
   /** 帖子是否含图 (用于列表 chip) */
   hasImages?: boolean;
+  quotedPost?: {
+    id: string;
+    title: string;
+    contentExcerpt: string;
+    board: Pick<BoardInfo, 'slug' | 'name'>;
+  };
 }
 
 export interface Comment {
@@ -82,6 +89,7 @@ export interface Comment {
   score: number;
   myVote?: 1 | -1 | 0;
   isDeleted: boolean;
+  status?: 'published' | 'pending_review' | 'hidden' | 'deleted';
   /** 0-3 */
   depth: number;
   createdAt: string;
@@ -100,7 +108,13 @@ export interface Page<T> {
 // Registration (审批注册)
 // ============================================================
 
-export type RegistrationStatus = 'not_registered' | 'pending' | 'approved' | 'rejected' | 'expired';
+export type RegistrationStatus =
+  | 'not_registered'
+  | 'pending'
+  | 'approved'
+  | 'rejected'
+  | 'expired'
+  | 'banned';
 export type RegistrationMethod = 'email' | 'screenshot';
 
 export interface RegistrationRequest {
@@ -130,6 +144,42 @@ export interface CurrentUser extends User {
   /** 是否允许陌生人私信 */
   dmAllowed: boolean;
   unreadConversations: number;
+  accountStatus: 'active' | 'suspended';
+  communitySafety: {
+    policyVersion: string;
+    accountAgeDays: number;
+    isNewUser: boolean;
+    acknowledgedToday: boolean;
+    shouldPrompt: boolean;
+    rulesUrl: string;
+  };
+}
+
+export type SanctionType = 'warning' | 'mute' | 'suspension' | 'ban';
+export type SanctionStatus = 'active' | 'expired' | 'revoked';
+export type AppealStatus = 'pending' | 'approved' | 'rejected';
+
+export interface MySanction {
+  id: string;
+  caseId: string | null;
+  type: SanctionType;
+  status: SanctionStatus;
+  scope: string;
+  policyRule: string | null;
+  reason: string;
+  startsAt: string;
+  endsAt: string | null;
+  revokedAt: string | null;
+  revokeNote: string | null;
+  createdAt: string;
+  appeal: {
+    id: string;
+    reason: string;
+    status: AppealStatus;
+    reviewNote: string | null;
+    reviewedAt: string | null;
+    createdAt: string;
+  } | null;
 }
 
 export interface NotificationItem {
@@ -161,12 +211,12 @@ export interface NotificationsPage {
 export type ConversationStatus = 'pending' | 'active' | 'blocked';
 
 /**
- * 私信中的角色昵称 — 由 HMAC(conversation_id, user_id) 派生
- * 不复用 post 的 per-thread 昵称, 防止跨帖关联同一用户
+ * 私信中的会话标识，只用于区分不同会话，不代表全局用户身份。
  */
 export interface DmPseudonym {
   displayName: string;
   color: string;
+  conversationCode: string;
 }
 
 /** 会话来源上下文,只让接收方知道是从哪个帖子触发的 */
@@ -199,8 +249,8 @@ export interface Message {
   contentMd: string;
   contentHtml: string;
   createdAt: string;
-  /** 仅 sender=me 时有意义: sending / sent / read */
-  status?: 'sending' | 'sent' | 'read';
+  /** 仅 sender=me 时有意义 */
+  status?: 'sending' | 'sent' | 'read' | 'pending_review' | 'not_delivered';
 }
 
 export interface ConversationDetail {
@@ -265,15 +315,9 @@ export interface ChatroomMessageDto {
   chatroomUid: string;
   content: string;
   createdAt: string;
-  senderIp?: string; // only for admins
   isFlagged: boolean;
+  moderationStatus: 'published' | 'pending_review' | 'hidden' | 'deleted';
+  isMine?: boolean;
   senderNickname: string;
   senderAvatar: string;
-  realSender?: {
-    userId: string;
-    username: string;
-    studentId: string;
-    email: string;
-    role: string;
-  };
 }

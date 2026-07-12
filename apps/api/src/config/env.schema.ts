@@ -12,6 +12,9 @@ export const envValidationSchema = Joi.object({
     .pattern(/^[a-z0-9.-]+\.[a-z]{2,}$/i)
     .default('pop.zjgsu.edu.cn'),
 
+  // Data retention
+  CHATROOM_RETENTION_DAYS: Joi.number().integer().min(30).max(3650).default(180),
+
   // Database
   DATABASE_URL: Joi.string()
     .uri({ scheme: ['postgresql', 'postgres'] })
@@ -91,6 +94,7 @@ export interface EnvVars {
   FRONTEND_ORIGIN: string;
   ADMIN_ORIGIN?: string;
   ALLOWED_EMAIL_DOMAIN: string;
+  CHATROOM_RETENTION_DAYS: number;
   DATABASE_URL: string;
   REDIS_URL: string;
   JWT_ACCESS_SECRET: string;

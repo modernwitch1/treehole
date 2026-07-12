@@ -1,8 +1,8 @@
 'use client';
 
 import * as React from 'react';
-import Image from 'next/image';
 import Link from 'next/link';
+import { BrandMark } from '@/components/brand-mark';
 import {
   Bell,
   CheckCheck,
@@ -14,6 +14,7 @@ import {
   Settings,
   Inbox,
   Home,
+  Layers3,
   TrendingUp,
   Compass,
   MessageSquare,
@@ -58,6 +59,7 @@ interface HeaderProps {
 
 const MOBILE_NAV = [
   { href: '/', label: '首页', icon: Home },
+  { href: '/explore', label: '全部帖子', icon: Layers3 },
   { href: '/popular', label: '热门', icon: TrendingUp },
   { href: '/compass', label: '选课指南针', icon: Compass },
   { href: '/chatrooms', label: '在线聊天房', icon: MessageSquare },
@@ -96,16 +98,7 @@ export function Header({ currentUser }: HeaderProps) {
             className="flex shrink-0 items-center gap-2 rounded-xl px-1.5 py-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             aria-label="浙工商树洞首页"
           >
-            <span className="flex size-9 items-center justify-center rounded-xl bg-primary/10 ring-1 ring-primary/10">
-              <Image
-                src="/logo.webp"
-                alt=""
-                width={32}
-                height={32}
-                priority
-                className="size-8 shrink-0 select-none"
-              />
-            </span>
+            <BrandMark className="size-9" />
             <span className="hidden text-lg font-bold tracking-[-0.025em] sm:inline-block">
               浙工商树洞
             </span>
@@ -217,15 +210,7 @@ export function Header({ currentUser }: HeaderProps) {
       <DialogContent className="left-0 top-0 flex h-[100dvh] max-h-none w-[min(20rem,88vw)] max-w-none translate-x-0 translate-y-0 flex-col gap-0 overflow-hidden rounded-none border-y-0 border-l-0 p-0 lg:hidden">
         <DialogHeader className="border-b border-border/80 px-4 py-4 text-left">
             <DialogTitle className="flex items-center gap-2.5 text-base">
-              <span className="flex size-9 items-center justify-center rounded-xl bg-primary/10">
-                <Image
-                  src="/logo.webp"
-                  alt=""
-                  width={32}
-                  height={32}
-                  className="size-8 select-none"
-                />
-              </span>
+              <BrandMark className="size-9" />
               浙工商树洞
             </DialogTitle>
             <DialogDescription className="sr-only">移动端主导航</DialogDescription>
@@ -410,14 +395,14 @@ function SearchBar({
   function submit(e: React.FormEvent) {
     e.preventDefault();
     const q = value.trim();
-    router.push(q ? `/?q=${encodeURIComponent(q)}` : '/');
+    router.push(q ? `/explore?q=${encodeURIComponent(q)}` : '/explore');
     onSubmitted?.();
   }
 
   return (
     <form onSubmit={submit} role="search" className="relative flex-1">
       <label htmlFor={autoFocus ? 'mobile-search-input' : 'site-search-input'} className="sr-only">
-        搜索帖子、标签或用户
+        搜索帖子
       </label>
       <Search className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
       <Input
@@ -426,7 +411,7 @@ function SearchBar({
         autoFocus={autoFocus}
         value={value}
         onChange={(e) => setValue(e.target.value)}
-        placeholder="搜索帖子、标签、用户…"
+        placeholder="搜索帖子…"
         className="h-10 rounded-full border-border/70 bg-muted/70 pl-10 pr-4 shadow-none hover:bg-muted focus-visible:bg-background"
       />
     </form>

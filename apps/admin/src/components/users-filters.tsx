@@ -70,6 +70,7 @@ export function UsersFilters() {
           <SelectItem value="user">普通用户</SelectItem>
           <SelectItem value="moderator">版主</SelectItem>
           <SelectItem value="admin">管理员</SelectItem>
+          <SelectItem value="superadmin">超级管理员</SelectItem>
         </SelectContent>
       </Select>
 

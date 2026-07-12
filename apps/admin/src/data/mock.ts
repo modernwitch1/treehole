@@ -25,11 +25,11 @@ function avatar(seed: string): string {
 // ============================================================
 
 export const MOCK_ADMIN_USER: AdminCurrentUser = {
-  id: 'admin-1',
-  username: '管理员·小何',
-  email: 'admin@pop.zjgsu.edu.cn',
-  avatarUrl: avatar('admin'),
-  role: 'admin',
+  id: 'hezhong233',
+  username: 'hezhong233',
+  email: 'hezhong233@pop.zjgsu.edu.cn',
+  avatarUrl: avatar('hezhong233'),
+  role: 'superadmin',
 };
 
 // ============================================================
@@ -46,6 +46,10 @@ export const MOCK_STATS: AdminStats = {
   newPostsToday: 132,
   newCommentsToday: 528,
   newReportsToday: 6,
+  pendingReview: 8,
+  pendingUploads: 0,
+  pendingCases: 0,
+  pendingAppeals: 0,
   trend: Array.from({ length: 30 }, (_, i) => {
     const d = new Date();
     d.setDate(d.getDate() - (29 - i));
@@ -75,7 +79,7 @@ export const MOCK_ADMIN_USERS: AdminUser[] = [
     email: 'hezhong233@pop.zjgsu.edu.cn',
     username: 'hezhong233',
     avatarUrl: avatar('hezhong233'),
-    role: 'user',
+    role: 'superadmin',
     status: 'active',
     emailVerifiedAt: daysAgo(30),
     suspendedUntil: null,
@@ -264,8 +268,6 @@ export const MOCK_ADMIN_REPORTS: AdminReport[] = [
       preview: '联系微信 abc12345,长租短租均可,价格美丽,先到先得…',
       authorUsername: '广告号-小李',
       isAnonymous: false,
-      realAuthorId: 'u5',
-      realAuthorUsername: '广告号-小李',
       boardSlug: 'market',
       createdAt: hoursAgo(3),
     },
@@ -284,8 +286,6 @@ export const MOCK_ADMIN_REPORTS: AdminReport[] = [
       preview: '楼主你怎么这么蠢,这么简单的事都搞不定,你们院的人都这样吗',
       authorUsername: '匿名 · 风暴',
       isAnonymous: true,
-      realAuthorId: 'u6',
-      realAuthorUsername: '已被封号',
       boardSlug: 'study',
       createdAt: hoursAgo(5),
     },
@@ -305,8 +305,6 @@ export const MOCK_ADMIN_REPORTS: AdminReport[] = [
       preview: '这件事我必须说几句…(政治敏感内容)',
       authorUsername: '匿名 · 灰熊',
       isAnonymous: true,
-      realAuthorId: 'u7',
-      realAuthorUsername: 'HR小师姐',
       boardSlug: 'treehole',
       createdAt: hoursAgo(8),
     },
@@ -325,8 +323,6 @@ export const MOCK_ADMIN_REPORTS: AdminReport[] = [
       preview: '广告号-小李 · 累计 8 条举报记录',
       authorUsername: '广告号-小李',
       isAnonymous: false,
-      realAuthorId: 'u5',
-      realAuthorUsername: '广告号-小李',
     },
     category: 'ad',
     reason: '反复发广告,建议封号',
@@ -343,8 +339,6 @@ export const MOCK_ADMIN_REPORTS: AdminReport[] = [
       preview: '(已经被处理的色情低俗内容样本)',
       authorUsername: '匿名 · 灰雾',
       isAnonymous: true,
-      realAuthorId: 'u6',
-      realAuthorUsername: '已被封号',
       boardSlug: 'confess',
       createdAt: daysAgo(2),
     },
@@ -367,8 +361,6 @@ export const MOCK_ADMIN_REPORTS: AdminReport[] = [
       preview: '上了三次课了,完全听不懂老师在讲什么…',
       authorUsername: 'flynn_的代码本',
       isAnonymous: false,
-      realAuthorId: 'u2',
-      realAuthorUsername: 'flynn_的代码本',
       boardSlug: 'study',
       createdAt: daysAgo(3),
     },
@@ -595,7 +587,7 @@ export const MOCK_AUDIT_LOGS: AdminAuditLog[] = [
   },
   {
     id: 'log5',
-    actor: { id: 'admin-1', username: '管理员·小何', role: 'admin' },
+    actor: { id: 'hezhong233', username: 'hezhong233', role: 'superadmin' },
     action: 'identity.reveal',
     targetType: 'post',
     targetId: 'p498',

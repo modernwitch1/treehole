@@ -4,13 +4,10 @@ import * as React from 'react';
 import Link from 'next/link';
 import { useRouter, useParams } from 'next/navigation';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
-import { Separator } from '@/components/ui/separator';
-import { ScrollArea } from '@/components/ui/scroll-area';
-import { ArrowLeft, Send, Clock, ShieldAlert, Loader2, Flag, AlertCircle, Ban } from 'lucide-react';
+import { ArrowLeft, Send, Clock, Loader2, Flag, AlertCircle, Ban } from 'lucide-react';
 import {
   getChatroomDetail,
   getChatroomMessages,
@@ -28,6 +25,8 @@ import {
   DialogDescription,
   DialogFooter,
 } from '@/components/ui/dialog';
+import { CommunitySafetyNotice } from '@/components/community-safety-notice';
+import { ReportDialog } from '@/components/report-dialog';
 
 export default function ChatroomPage() {
   const params = useParams();
@@ -41,15 +40,18 @@ export default function ChatroomPage() {
   const [sending, setSending] = React.useState(false);
   const [text, setText] = React.useState('');
   const [showWarningModal, setShowWarningModal] = React.useState(false);
+  const [rulesAcknowledged, setRulesAcknowledged] = React.useState(false);
   const hasNotifiedRef = React.useRef(false);
   const messagesRequestInFlightRef = React.useRef(false);
   const roomStatusRequestInFlightRef = React.useRef(false);
-  const lastMessageIdRef = React.useRef<string>();
+  const lastMessageIdRef = React.useRef<string | undefined>(undefined);
+  const lastFullMessageRefreshAtRef = React.useRef(0);
 
   const scrollRef = React.useRef<HTMLDivElement>(null);
 
   React.useEffect(() => {
     lastMessageIdRef.current = undefined;
+    lastFullMessageRefreshAtRef.current = 0;
     setMessages([]);
   }, [uid]);
 
@@ -58,7 +60,7 @@ export default function ChatroomPage() {
       const [detail, user] = await Promise.all([getChatroomDetail(uid), getCurrentUser()]);
       setRoom(detail);
       setCurrentUser(user);
-    } catch (err) {
+    } catch {
       toast.error('获取聊天房详情失败');
       router.push('/chatrooms');
     } finally {
@@ -66,33 +68,36 @@ export default function ChatroomPage() {
     }
   }, [uid, router]);
 
-  const fetchMessages = React.useCallback(async (forceFull = false) => {
-    if (!uid || messagesRequestInFlightRef.current) return;
-    messagesRequestInFlightRef.current = true;
-    try {
-      const afterId = forceFull ? undefined : lastMessageIdRef.current;
-      const list = await getChatroomMessages(uid, afterId);
-      setMessages((current) => {
-        const next = afterId
-          ? [...new Map([...current, ...list].map((message) => [message.id, message])).values()]
-          : list;
-        const unchanged =
-          current.length === next.length &&
-          current.every(
-            (message, index) =>
-              message.id === next[index]?.id &&
-              message.content === next[index]?.content &&
-              message.isFlagged === next[index]?.isFlagged,
-          );
-        return unchanged ? current : next;
-      });
-      if (list.length > 0) lastMessageIdRef.current = list[list.length - 1].id;
-    } catch (err) {
-      // quiet fail on polling
-    } finally {
-      messagesRequestInFlightRef.current = false;
-    }
-  }, [uid]);
+  const fetchMessages = React.useCallback(
+    async (forceFull = false) => {
+      if (!uid || messagesRequestInFlightRef.current) return;
+      messagesRequestInFlightRef.current = true;
+      try {
+        const afterId = forceFull ? undefined : lastMessageIdRef.current;
+        const list = await getChatroomMessages(uid, afterId);
+        setMessages((current) => {
+          const next = afterId
+            ? [...new Map([...current, ...list].map((message) => [message.id, message])).values()]
+            : list;
+          const unchanged =
+            current.length === next.length &&
+            current.every(
+              (message, index) =>
+                message.id === next[index]?.id &&
+                message.content === next[index]?.content &&
+                message.isFlagged === next[index]?.isFlagged,
+            );
+          return unchanged ? current : next;
+        });
+        if (list.length > 0) lastMessageIdRef.current = list[list.length - 1].id;
+      } catch {
+        // quiet fail on polling
+      } finally {
+        messagesRequestInFlightRef.current = false;
+      }
+    },
+    [uid],
+  );
 
   const refreshRoomStatus = React.useCallback(async () => {
     if (!uid || roomStatusRequestInFlightRef.current) return;
@@ -115,8 +120,6 @@ export default function ChatroomPage() {
   React.useEffect(() => {
     if (room && currentUser && !hasNotifiedRef.current) {
       hasNotifiedRef.current = true;
-      const isAdmin = currentUser.role === 'admin' || currentUser.role === 'moderator';
-
       toast(
         <div className="flex flex-col gap-1">
           <div className="flex items-center gap-1.5 text-foreground font-semibold text-xs">
@@ -127,20 +130,13 @@ export default function ChatroomPage() {
             本房间将于 {new Date(room.expiresAt).toLocaleTimeString()}{' '}
             自动关闭。所有发言均隐去真实身份。
           </p>
-          {isAdmin && (
-            <p className="text-red-500 text-[11px] font-medium leading-normal mt-0.5">
-              检测到管理员身份，您可以实时查看发送者的真实学号与IP。
-            </p>
-          )}
         </div>,
         {
           duration: 6000,
         },
       );
 
-      if (!isAdmin) {
-        setShowWarningModal(true);
-      }
+      setShowWarningModal(true);
     }
   }, [room, currentUser]);
 
@@ -155,7 +151,9 @@ export default function ChatroomPage() {
     let lastRoomRefreshAt = Date.now();
     const poll = () => {
       if (document.visibilityState !== 'visible') return;
-      void fetchMessages();
+      const forceFull = Date.now() - lastFullMessageRefreshAtRef.current >= 30_000;
+      if (forceFull) lastFullMessageRefreshAtRef.current = Date.now();
+      void fetchMessages(forceFull);
       if (roomIsActive && Date.now() - lastRoomRefreshAt >= 30_000) {
         lastRoomRefreshAt = Date.now();
         void refreshRoomStatus();
@@ -187,15 +185,21 @@ export default function ChatroomPage() {
 
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!text.trim() || !room?.isActive) return;
+    if (!text.trim() || !room?.isActive || !rulesAcknowledged) return;
 
     const content = text.trim();
-    setText('');
     setSending(true);
 
     try {
-      const newMsg = await sendChatroomMessage(uid, content);
+      const newMsg = await sendChatroomMessage(uid, content, rulesAcknowledged);
       setMessages((prev) => [...prev, newMsg]);
+      setText('');
+      setRulesAcknowledged(false);
+      if (newMsg.moderationStatus === 'pending_review') {
+        toast.info('发言已提交审核', {
+          description: '审核通过前仅你自己可见，不会展示给房间内其他用户。',
+        });
+      }
     } catch (err) {
       toast.error((err as Error).message || '消息发送失败');
     } finally {
@@ -212,35 +216,6 @@ export default function ChatroomPage() {
       fetchRoomDetail();
     } catch (err) {
       toast.error((err as Error).message || '关闭失败');
-    }
-  };
-
-  // Flag a violating message (Admins only)
-  const handleFlagMessage = async (msgId: string) => {
-    if (
-      !confirm(
-        '确定要标记并上报这条言论吗？被标记的数据将永久记录到专属审计日志中，便于后续溯源与处罚。',
-      )
-    )
-      return;
-
-    try {
-      const res = await fetch(`/api/v1/admin/chatrooms/messages/${msgId}/flag`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        credentials: 'include',
-      });
-
-      if (!res.ok) {
-        throw new Error('标记失败');
-      }
-
-      toast.success('标记成功！该违规言论已安全保存至审计日志中。');
-      fetchMessages(true); // refresh the updated existing message
-    } catch (err) {
-      toast.error('标记言论失败，请检查管理员权限');
     }
   };
 
@@ -266,7 +241,11 @@ export default function ChatroomPage() {
   }
 
   const isOwner = currentUser && String(currentUser.id) === room.creatorId;
-  const isAdmin = currentUser && (currentUser.role === 'admin' || currentUser.role === 'moderator');
+  const isAdmin =
+    currentUser &&
+    (currentUser.role === 'superadmin' ||
+      currentUser.role === 'admin' ||
+      currentUser.role === 'moderator');
 
   return (
     <>
@@ -355,9 +334,8 @@ export default function ChatroomPage() {
             ) : (
               <div className="space-y-4">
                 {messages.map((msg) => {
-                  const isMyMessage =
-                    currentUser && msg.realSender?.userId === String(currentUser.id);
-                  const hasAdminInfo = msg.realSender;
+                  const isMyMessage = msg.isMine === true;
+                  const isPending = msg.moderationStatus === 'pending_review';
 
                   return (
                     <div
@@ -378,24 +356,12 @@ export default function ChatroomPage() {
                             {msg.senderNickname}
                           </span>
 
-                          {/* Admin monitoring layout */}
-                          {isAdmin && hasAdminInfo && (
+                          {isPending && isMyMessage && (
                             <Badge
                               variant="outline"
-                              className="text-[10px] text-red-500 border-red-500/20 bg-red-500/5 px-1 py-0 flex items-center gap-1 font-medium"
+                              className="border-amber-500/30 bg-amber-500/10 px-1 py-0 text-[9px] font-medium text-amber-700 dark:text-amber-300"
                             >
-                              <ShieldAlert className="size-3" />
-                              <span>学号: {msg.realSender?.studentId}</span>
-                              <span>({msg.senderIp})</span>
-                            </Badge>
-                          )}
-
-                          {msg.isFlagged && (
-                            <Badge
-                              variant="destructive"
-                              className="text-[9px] px-1 py-0 font-medium"
-                            >
-                              已标记违规
+                              审核中 · 仅自己可见
                             </Badge>
                           )}
                         </div>
@@ -403,8 +369,8 @@ export default function ChatroomPage() {
                         {/* Content Bubble */}
                         <div
                           className={`rounded-lg px-3 py-2 text-sm whitespace-pre-wrap break-all shadow-sm ${
-                            msg.isFlagged
-                              ? 'bg-red-500/10 text-red-700 dark:text-red-300 border border-red-500/20'
+                            isPending
+                              ? 'border border-amber-500/30 bg-amber-500/10 text-foreground'
                               : isMyMessage
                                 ? 'bg-orange-500 text-white'
                                 : 'bg-muted border border-border text-foreground'
@@ -422,15 +388,21 @@ export default function ChatroomPage() {
                             })}
                           </span>
 
-                          {isAdmin && !msg.isFlagged && (
-                            <button
-                              type="button"
-                              onClick={() => handleFlagMessage(msg.id)}
-                              className="text-[10px] text-muted-foreground hover:text-red-500 flex items-center gap-0.5 transition-colors"
-                            >
-                              <Flag className="size-3" />
-                              <span>标记</span>
-                            </button>
+                          {!isMyMessage && (
+                            <ReportDialog
+                              targetType="chatroom_message"
+                              targetId={msg.id}
+                              title="举报这条聊天房消息"
+                              trigger={
+                                <button
+                                  type="button"
+                                  className="flex items-center gap-0.5 text-[10px] text-muted-foreground transition-colors hover:text-destructive"
+                                >
+                                  <Flag className="size-3" />
+                                  <span>举报</span>
+                                </button>
+                              }
+                            />
                           )}
                         </div>
                       </div>
@@ -446,27 +418,41 @@ export default function ChatroomPage() {
         {/* Bottom Input Area */}
         <footer className="px-4 py-3 bg-muted/20 border-t border-border shrink-0">
           {room.isActive ? (
-            <form onSubmit={handleSend} className="flex gap-2">
-              <Input
-                value={text}
-                onChange={(e) => setText(e.target.value)}
-                placeholder="在聊天房内文明发言..."
-                maxLength={2000}
-                className="flex-1 bg-background border border-border focus-visible:ring-orange-500"
-                disabled={sending}
-                required
-              />
-              <Button
-                type="submit"
-                className="bg-orange-500 hover:bg-orange-600 text-white shrink-0 shadow-sm transition-transform active:scale-95"
-                disabled={sending || !text.trim()}
-              >
-                {sending ? (
-                  <Loader2 className="size-4 animate-spin" />
-                ) : (
-                  <Send className="size-4" />
-                )}
-              </Button>
+            <form onSubmit={handleSend} className="space-y-2">
+              <CommunitySafetyNotice compact privateChannel />
+              <div className="flex gap-2">
+                <Input
+                  value={text}
+                  onChange={(e) => setText(e.target.value)}
+                  placeholder="在聊天房内文明发言..."
+                  maxLength={2000}
+                  className="flex-1 bg-background border border-border focus-visible:ring-orange-500"
+                  disabled={sending}
+                  required
+                />
+                <Button
+                  type="submit"
+                  className="bg-orange-500 hover:bg-orange-600 text-white shrink-0 shadow-sm transition-transform active:scale-95"
+                  disabled={sending || !text.trim() || !rulesAcknowledged}
+                >
+                  {sending ? (
+                    <Loader2 className="size-4 animate-spin" />
+                  ) : (
+                    <Send className="size-4" />
+                  )}
+                </Button>
+              </div>
+              <label className="flex cursor-pointer items-start gap-2 text-[11px] leading-relaxed text-muted-foreground">
+                <input
+                  type="checkbox"
+                  checked={rulesAcknowledged}
+                  onChange={(event) => setRulesAcknowledged(event.target.checked)}
+                  className="mt-0.5"
+                />
+                <span>
+                  我确认本条发言遵守社区规则，并知悉违规内容可能被拦截、处罚和依法依规溯源。
+                </span>
+              </label>
             </form>
           ) : (
             <div className="flex items-center justify-center gap-2 py-1.5 text-xs text-muted-foreground bg-muted/60 rounded-md border border-border">
@@ -478,8 +464,18 @@ export default function ChatroomPage() {
       </div>
 
       {/* Safety Warning Modal for Ordinary Users */}
-      <Dialog open={showWarningModal} onOpenChange={setShowWarningModal}>
-        <DialogContent className="sm:max-w-md">
+      <Dialog
+        open={showWarningModal}
+        onOpenChange={(nextOpen) => {
+          if (nextOpen || rulesAcknowledged) setShowWarningModal(nextOpen);
+        }}
+      >
+        <DialogContent
+          hideCloseButton
+          className="sm:max-w-md"
+          onEscapeKeyDown={(event) => event.preventDefault()}
+          onPointerDownOutside={(event) => event.preventDefault()}
+        >
           <DialogHeader>
             <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 mb-3">
               <AlertCircle className="size-6" />
@@ -508,15 +504,23 @@ export default function ChatroomPage() {
                 <strong className="text-foreground">匿名发言规则：</strong>
                 聊天房内所有发言对其他普通用户是匿名的，系统会为您分配随机的匿名头像与昵称。
               </li>
+              <li>
+                <strong className="text-foreground">记录留存规则：</strong>
+                聊天房关闭或过期不代表记录立即删除。常规记录默认留存 180 天，部署者可在 30–3650
+                天范围内配置；标记为证据保全（legalHold）的记录不会被自动删除。
+              </li>
               <li className="text-red-500 dark:text-red-400 font-medium">
                 <strong>实名溯源机制：</strong>
-                为防范违规行为，平台会记录所有发送者的IP及真实学号。一旦您的言论违反社区规则或涉嫌违法，管理员有权标记该内容并记录至审计日志。届时，管理员可以溯源您的真实信息并移交相关部门处理。
+                匿名仅面向普通用户。仅全站唯一超级管理员可通过受控权限进行溯源，且每次查询都会自动写入审计；普通管理员和版主无此权限。涉嫌违法违规时，平台可依法依规配合学校相关部门或有权机关调查。
               </li>
             </ul>
           </div>
           <DialogFooter className="sm:justify-center">
             <Button
-              onClick={() => setShowWarningModal(false)}
+              onClick={() => {
+                setRulesAcknowledged(true);
+                setShowWarningModal(false);
+              }}
               className="w-full bg-orange-500 hover:bg-orange-600 text-white shadow-sm font-medium"
             >
               我已阅读并同意遵守规则

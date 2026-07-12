@@ -1,7 +1,7 @@
 import type { CanActivate, ExecutionContext } from '@nestjs/common';
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import type { Request } from 'express';
-import { AdminAuthService, type AdminPrincipal } from './admin-auth.service';
+import { AdminAuthService, isAdminRole, type AdminPrincipal } from './admin-auth.service';
 import { ADMIN_ACCESS_COOKIE } from '../auth/session.constants';
 
 export type AdminRequest = Request & { admin?: AdminPrincipal };
@@ -18,7 +18,7 @@ export class AdminAuthGuard implements CanActivate {
     }
 
     const admin = await this.auth.validateToken(token);
-    if (admin.role !== 'admin' && admin.role !== 'moderator') {
+    if (!isAdminRole(admin.role)) {
       throw new UnauthorizedException('无后台权限');
     }
     req.admin = admin;

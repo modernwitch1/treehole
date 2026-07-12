@@ -1,6 +1,6 @@
 # 浙工商树洞
 
-浙江工商大学校园匿名树洞。生产模式下所有核心功能走真实 API，公开论坛只展示匿名身份；管理员后台通过 `manage.unidating.top` 访问，管理员可查看真实作者但必须留下审计记录。
+浙江工商大学校园匿名树洞。生产模式下所有核心功能走真实 API，公开论坛只展示匿名身份；管理员后台通过 `manage.unidating.top` 访问，只有全站唯一的超级管理员可查看真实作者且每次访问都会留下审计记录。
 
 ```
 zjgsu-forum/          ← monorepo 根
@@ -21,8 +21,9 @@ zjgsu-forum/          ← monorepo 根
 - Web 论坛、API、Admin 后台均支持真实后端模式；生产环境必须设置 `NEXT_PUBLIC_USE_MOCK=false`。
 - 本地开发可以显式设置 `NEXT_PUBLIC_USE_MOCK=true` 使用演示数据；生产构建检测到 mock 会直接失败。
 - 用户登录使用 HttpOnly Cookie 会话；发帖、评论、投票、举报、上传、私信和个人设置接口均要求真实登录用户。
-- 管理后台不再使用硬编码管理员账号；只有数据库中 `role=admin|moderator` 的用户可以登录后台，生产环境要求配置 `ADMIN_TOTP_SECRET` 二次验证码。
+- 管理后台不再使用硬编码管理员账号；`superadmin|admin|moderator` 可登录后台，只有全站唯一的 `superadmin` 可访问身份、注册材料和平台配置等高敏能力。生产环境要求配置 `ADMIN_TOTP_SECRET` 登录二次验证码。
 - 匿名昵称由 `ANON_SECRET` + 帖子 ID + 用户 ID 派生，同帖稳定、跨帖不可关联；公开 API 不返回真实作者身份。
+- 聊天房仅开放 2 小时，关闭或过期不代表记录立即删除；常规记录默认留存 180 天，可通过 `CHATROOM_RETENTION_DAYS` 在 30–3650 天范围内配置。标记为证据保全（`legalHold`）的记录不会被自动删除；私信目前没有自动过期机制。
 - 后台内容管理、注册审批、用户封禁、敏感词管理均接入真实数据库；敏感词规则会在发帖/评论时执行 block/review/mask。
 - 管理员可在后台“站点设置”发布全站通知，通知会同步进入用户首页顶部导航栏并支持已读状态。
 
@@ -135,17 +136,18 @@ pnpm dev:web
 
 ## 常用命令
 
-| 命令                                     | 作用                           |
-| ---------------------------------------- | ------------------------------ |
-| `pnpm dev:web`                           | 启动前端开发                   |
-| `pnpm dev:api`                           | 启动后端开发                   |
-| `pnpm build`                             | 全部 workspace 编译            |
-| `pnpm typecheck`                         | 全部 workspace TypeScript 检查 |
-| `pnpm lint`                              | 全部 workspace lint 修复       |
-| `pnpm format`                            | Prettier 格式化全仓            |
-| `pnpm --filter @forum/api prisma:studio` | 数据库 GUI                     |
-| `pnpm --filter @forum/api db:seed`       | 重新种子版块                   |
-| `pnpm --filter @forum/web build`         | 仅前端构建                     |
+| 命令                                                                                | 作用                           |
+| ----------------------------------------------------------------------------------- | ------------------------------ |
+| `pnpm dev:web`                                                                      | 启动前端开发                   |
+| `pnpm dev:api`                                                                      | 启动后端开发                   |
+| `pnpm build`                                                                        | 全部 workspace 编译            |
+| `pnpm typecheck`                                                                    | 全部 workspace TypeScript 检查 |
+| `pnpm lint`                                                                         | 全部 workspace lint 修复       |
+| `pnpm format`                                                                       | Prettier 格式化全仓            |
+| `pnpm --filter @forum/api prisma:studio`                                            | 数据库 GUI                     |
+| `pnpm --filter @forum/api db:seed`                                                  | 重新种子版块                   |
+| `pnpm --filter @forum/api superadmin:transfer -- --from OLD --to NEW --confirm NEW` | 事务化转移唯一超级管理员       |
+| `pnpm --filter @forum/web build`                                                    | 仅前端构建                     |
 
 ---
 
@@ -186,7 +188,9 @@ pnpm dev:web
 - API 会话使用 `forum_access_token` / `forum_refresh_token` HttpOnly Cookie；Admin 使用独立 `admin_access_token` HttpOnly Cookie。
 - 生产环境需要配置 `ADMIN_TOTP_SECRET`，后台管理员登录必须输入 6 位 TOTP 动态码。
 - 图片上传会校验文件魔数、拒绝 SVG、重新编码为安全图片格式后上传到 S3/CloudFront。
-- 普通用户接口永不返回真实作者 ID、邮箱或用户名；管理员查看真实身份必须走后台审计链路。
+- 普通用户接口永不返回真实作者 ID、邮箱或用户名；只有超级管理员可查看真实身份，且每次查看都会写入后台审计日志。
+- 仅全站唯一的超级管理员可通过受控权限对聊天房记录进行溯源，每次查询都会自动写入审计日志；普通管理员和版主无此权限。
+- 不要用手工 SQL 交换超级管理员。先确保目标账号是已验证、状态正常的 `admin`，再运行 `pnpm --filter @forum/api superadmin:transfer -- --from 当前用户名 --to 目标用户名 --confirm 目标用户名`。命令会锁定转移事务、先降级旧超管再升级目标、写审计并撤销双方后台会话；任何校验或数据库步骤失败都会回滚角色变更。
 
 ---
 

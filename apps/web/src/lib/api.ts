@@ -26,6 +26,7 @@ import type {
   SortType,
   ChatroomDetail,
   ChatroomMessageDto,
+  MySanction,
 } from '@/types/api';
 
 const USE_MOCK = process.env.NEXT_PUBLIC_USE_MOCK === 'true';
@@ -233,6 +234,8 @@ export async function createPost(data: {
   boardSlug: string;
   isAnonymous?: boolean;
   imageUrls?: string[];
+  quotedPostId?: string;
+  rulesAcknowledged: boolean;
 }): Promise<Post> {
   if (USE_MOCK) {
     await new Promise((r) => setTimeout(r, 500));
@@ -282,7 +285,9 @@ export async function createPost(data: {
   });
 }
 
-export async function uploadPostImage(file: File): Promise<{ url: string }> {
+export async function uploadPostImage(
+  file: File,
+): Promise<{ url: string; moderationStatus?: 'pending' | 'passed' | 'flagged' | 'rejected' }> {
   if (USE_MOCK) {
     await new Promise((r) => setTimeout(r, 200));
     return {
@@ -334,17 +339,16 @@ export async function uploadChatroomImage(file: File): Promise<{ url: string }> 
   return res.json() as Promise<{ url: string }>;
 }
 
-export async function votePost(postId: string, value: 1 | -1 | 0): Promise<void> {
+export async function votePost(postId: string, value: 1 | 0): Promise<void> {
   if (USE_MOCK) {
     const post = MOCK_POSTS.find((p) => p.id === postId);
     if (post) {
       const prev = post.myVote ?? 0;
       if (prev === 1) post.upvotes -= 1;
-      if (prev === -1) post.downvotes -= 1;
       post.myVote = value || undefined;
       if (value === 1) post.upvotes += 1;
-      if (value === -1) post.downvotes += 1;
-      post.score = post.upvotes - post.downvotes;
+      post.downvotes = 0;
+      post.score = post.upvotes;
     }
     return;
   }
@@ -389,6 +393,7 @@ export async function createComment(data: {
   contentMd: string;
   parentId?: string;
   isAnonymous?: boolean;
+  rulesAcknowledged: boolean;
 }): Promise<Comment> {
   if (USE_MOCK) {
     await new Promise((r) => setTimeout(r, 300));
@@ -429,6 +434,7 @@ export async function createComment(data: {
       contentMd: data.contentMd,
       parentId: data.parentId,
       isAnonymous: data.isAnonymous ?? true,
+      rulesAcknowledged: data.rulesAcknowledged,
     }),
   });
 }
@@ -454,10 +460,17 @@ export async function voteComment(commentId: string, value: 1 | -1 | 0): Promise
 }
 
 export async function reportTarget(data: {
-  targetType: 'post' | 'comment' | 'user';
+  targetType:
+    | 'post'
+    | 'comment'
+    | 'user'
+    | 'conversation'
+    | 'direct_message'
+    | 'chatroom_message';
   targetId: string;
   category: 'illegal' | 'porn' | 'ad' | 'harassment' | 'other';
   reason?: string;
+  evidenceMessageIds?: string[];
 }): Promise<{ ok: true }> {
   if (USE_MOCK) {
     await new Promise((r) => setTimeout(r, 250));
@@ -492,6 +505,23 @@ export async function getCurrentUser(): Promise<CurrentUser | null> {
   }
 }
 
+export async function acknowledgeCommunityRules(
+  version: string,
+  source: 'new_user_daily' | 'publish' | 'private_message' | 'rules_update',
+): Promise<{ ok: true; acknowledgedAt: string }> {
+  if (USE_MOCK) {
+    if (MOCK_CURRENT_USER.communitySafety) {
+      MOCK_CURRENT_USER.communitySafety.acknowledgedToday = true;
+      MOCK_CURRENT_USER.communitySafety.shouldPrompt = false;
+    }
+    return { ok: true, acknowledgedAt: new Date().toISOString() };
+  }
+  return request('/users/me/community-rules/acknowledge', {
+    method: 'POST',
+    body: JSON.stringify({ version, source }),
+  });
+}
+
 // ============================================================
 // 私信
 // ============================================================
@@ -518,11 +548,13 @@ export interface SendMessageResult {
   ok: boolean;
   error?: 'partner_dm_disabled' | 'rate_limited_pending' | 'blocked';
   message?: string;
+  moderationStatus?: 'published' | 'pending_review';
 }
 
 export async function sendMessage(
   conversationId: string,
   contentMd: string,
+  rulesAcknowledged: boolean,
 ): Promise<SendMessageResult> {
   if (USE_MOCK) {
     await new Promise((r) => setTimeout(r, 300));
@@ -530,13 +562,14 @@ export async function sendMessage(
   }
   return request(`/messages/conversations/${conversationId}`, {
     method: 'POST',
-    body: JSON.stringify({ contentMd }),
+    body: JSON.stringify({ contentMd, rulesAcknowledged }),
   });
 }
 
 export interface InitiateConversationParams {
   originPostId: string;
   initialMessage: string;
+  rulesAcknowledged: boolean;
 }
 
 export async function initiateConversation(
@@ -662,6 +695,9 @@ export async function submitRegistration(data: {
   realName?: string;
   method: 'email' | 'screenshot';
   screenshotUrl?: string;
+  acceptTerms: boolean;
+  acceptCommunityRules: boolean;
+  policyVersion: string;
 }): Promise<RegistrationRequest> {
   if (USE_MOCK) {
     await new Promise((r) => setTimeout(r, 600));
@@ -770,6 +806,27 @@ export async function logout(): Promise<{ ok: true }> {
   return request('/auth/logout', { method: 'POST' });
 }
 
+export async function listMySanctions(): Promise<{ items: MySanction[] }> {
+  if (USE_MOCK) return { items: [] };
+  return request('/appeals/me/sanctions', { cache: 'no-store' });
+}
+
+export async function submitAppeal(
+  sanctionId: string,
+  reason: string,
+): Promise<{ ok: true; appeal: { id: string; status: 'pending'; createdAt: string } }> {
+  if (USE_MOCK) {
+    return {
+      ok: true,
+      appeal: { id: `mock-appeal-${Date.now()}`, status: 'pending', createdAt: new Date().toISOString() },
+    };
+  }
+  return request('/appeals', {
+    method: 'POST',
+    body: JSON.stringify({ sanctionId, reason }),
+  });
+}
+
 export async function requestPasswordReset(email: string): Promise<{ ok: true }> {
   if (USE_MOCK) {
     await new Promise((r) => setTimeout(r, 700));
@@ -804,6 +861,7 @@ export async function createChatroom(data: {
   description?: string;
   avatarUrl?: string;
   backgroundUrl?: string;
+  rulesAcknowledged: boolean;
 }): Promise<ChatroomDetail> {
   if (USE_MOCK) {
     throw new Error('Not implemented');
@@ -835,13 +893,14 @@ export async function getChatroomMessages(
 export async function sendChatroomMessage(
   uid: string,
   content: string,
+  rulesAcknowledged: boolean,
 ): Promise<ChatroomMessageDto> {
   if (USE_MOCK) {
     throw new Error('Not implemented');
   }
   return request(`/chatrooms/${uid}/messages`, {
     method: 'POST',
-    body: JSON.stringify({ content }),
+    body: JSON.stringify({ content, rulesAcknowledged }),
   });
 }
 
@@ -879,6 +938,7 @@ export async function applyForBoard(data: {
   name: string;
   description: string;
   reason: string;
+  rulesAcknowledged: boolean;
 }): Promise<{ ok: boolean }> {
   if (USE_MOCK) {
     await new Promise((r) => setTimeout(r, 500));

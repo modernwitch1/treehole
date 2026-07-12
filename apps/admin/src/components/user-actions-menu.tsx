@@ -36,24 +36,32 @@ type Action = 'suspend' | 'ban' | 'unban' | 'promote' | 'demote' | null;
 
 export function UserActionsMenu({ user, onChanged }: UserActionsMenuProps) {
   const [pending, setPending] = React.useState<Action>(null);
+  const [reason, setReason] = React.useState('');
+  const [days, setDays] = React.useState(7);
   const router = useRouter();
 
   function close() {
     setPending(null);
+    setReason('');
+    setDays(7);
   }
 
   async function confirm() {
     if (!pending) return;
+    if (['suspend', 'ban', 'unban'].includes(pending) && reason.trim().length < 5) {
+      toast.error('请填写至少 5 个字的具体依据');
+      return;
+    }
     try {
       switch (pending) {
         case 'suspend':
-          await suspendUser(user.id);
+          await suspendUser(user.id, reason.trim(), days);
           break;
         case 'ban':
-          await banUser(user.id);
+          await banUser(user.id, reason.trim());
           break;
         case 'unban':
-          await unbanUser(user.id);
+          await unbanUser(user.id, reason.trim());
           break;
         case 'promote':
           await setUserRole(user.id, 'moderator');
@@ -76,8 +84,8 @@ export function UserActionsMenu({ user, onChanged }: UserActionsMenuProps) {
       } else {
         router.refresh();
       }
-    } catch {
-      toast.error('操作失败');
+    } catch (error) {
+      toast.error((error as Error).message || '操作失败');
       close();
     }
   }
@@ -144,9 +152,48 @@ export function UserActionsMenu({ user, onChanged }: UserActionsMenuProps) {
             <AlertDialogTitle>{getDialogTitle(pending, user.username)}</AlertDialogTitle>
             <AlertDialogDescription>{getDialogDesc(pending)}</AlertDialogDescription>
           </AlertDialogHeader>
+          {pending && ['suspend', 'ban', 'unban'].includes(pending) && (
+            <div className="space-y-3">
+              {pending === 'suspend' && (
+                <label className="block space-y-1.5 text-sm">
+                  <span className="font-medium">暂停天数（1–30 天）</span>
+                  <input
+                    type="number"
+                    min={1}
+                    max={30}
+                    value={days}
+                    onChange={(event) =>
+                      setDays(Math.min(30, Math.max(1, Number(event.target.value) || 1)))
+                    }
+                    className="h-9 w-full rounded-md border bg-background px-3"
+                  />
+                </label>
+              )}
+              <label className="block space-y-1.5 text-sm">
+                <span className="font-medium">
+                  {pending === 'unban' ? '解除限制依据' : '处罚事实与规则依据'}
+                </span>
+                <textarea
+                  value={reason}
+                  onChange={(event) => setReason(event.target.value)}
+                  rows={4}
+                  maxLength={1000}
+                  placeholder="至少 5 个字；将写入处罚记录、审计日志并供申诉复核"
+                  className="w-full resize-none rounded-md border bg-background p-3 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+                />
+                <span className="block text-right text-xs text-muted-foreground">
+                  {reason.trim().length} / 1000
+                </span>
+              </label>
+            </div>
+          )}
           <AlertDialogFooter>
             <AlertDialogCancel>取消</AlertDialogCancel>
             <AlertDialogAction
+              disabled={
+                Boolean(pending && ['suspend', 'ban', 'unban'].includes(pending)) &&
+                reason.trim().length < 5
+              }
               onClick={(e) => {
                 e.preventDefault();
                 void confirm();

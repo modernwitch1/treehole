@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import { EyeOff, Check, X, ExternalLink, AlertTriangle } from 'lucide-react';
+import { EyeOff, Check, X, ExternalLink, AlertTriangle, ShieldCheck } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -21,7 +21,7 @@ import { reviewReport } from '@/lib/api';
 import { relativeTime } from '@/lib/format';
 import { WEB_APP_URL } from '@/lib/site-urls';
 import { cn } from '@/lib/utils';
-import type { AdminReport, ReportCategory } from '@/types/admin';
+import type { AdminReport, ReportCategory, ReportTargetType } from '@/types/admin';
 const CATEGORY_LABEL: Record<
   ReportCategory,
   { label: string; tone: 'destructive' | 'warning' | 'muted' }
@@ -33,28 +33,40 @@ const CATEGORY_LABEL: Record<
   other: { label: '其他', tone: 'muted' },
 };
 
-const TARGET_TYPE_LABEL = {
+const TARGET_TYPE_LABEL: Record<ReportTargetType, string> = {
   post: '帖子',
   comment: '评论',
   user: '用户',
-} as const;
+  conversation: '私信会话',
+  direct_message: '私信消息',
+  chatroom_message: '聊天房消息',
+};
 
 export function ReportCard({ report, onChanged }: { report: AdminReport; onChanged?: () => void }) {
   const [pending, setPending] = React.useState<'hide' | 'resolve' | 'reject' | null>(null);
   const [note, setNote] = React.useState('');
   const [localStatus, setLocalStatus] = React.useState(report.status);
+  const [submitting, setSubmitting] = React.useState(false);
   const router = useRouter();
   const isClosed = localStatus !== 'open';
 
   async function confirm() {
     if (!pending) return;
+    if (note.trim().length < 3) {
+      toast.error('请填写至少 3 个字的处理依据');
+      return;
+    }
+    const action = pending;
+    setSubmitting(true);
     try {
-      await reviewReport(report.id, pending, note || undefined);
-      setLocalStatus(
-        pending === 'resolve' ? 'resolved' : pending === 'reject' ? 'rejected' : 'open',
-      );
-      const labels = { hide: '已隐藏内容', resolve: '已判定违规', reject: '已驳回举报' };
-      toast.success(labels[pending]);
+      await reviewReport(report.id, action, note.trim());
+      setLocalStatus(action === 'reject' ? 'rejected' : 'resolved');
+      const labels = {
+        hide: '已确认违规并隔离目标',
+        resolve: '举报已结案',
+        reject: '已判定举报不成立',
+      };
+      toast.success(labels[action]);
       setPending(null);
       setNote('');
       if (onChanged) {
@@ -62,9 +74,10 @@ export function ReportCard({ report, onChanged }: { report: AdminReport; onChang
       } else {
         router.refresh();
       }
-    } catch {
-      toast.error('操作失败');
-      setPending(null);
+    } catch (error) {
+      toast.error((error as Error).message || '操作失败');
+    } finally {
+      setSubmitting(false);
     }
   }
 
@@ -77,6 +90,7 @@ export function ReportCard({ report, onChanged }: { report: AdminReport; onChang
         <div className="flex items-start gap-2">
           <Badge variant={cat.tone}>{cat.label}</Badge>
           <Badge variant="muted">{TARGET_TYPE_LABEL[report.targetType]}</Badge>
+          {(report.priority ?? 0) >= 80 && <Badge variant="destructive">高优先级</Badge>}
           <span className="text-xs text-muted-foreground">{relativeTime(report.createdAt)}</span>
           <span className="ml-auto font-mono text-xs text-muted-foreground">#{report.id}</span>
         </div>
@@ -88,30 +102,42 @@ export function ReportCard({ report, onChanged }: { report: AdminReport; onChang
           )}
           <p
             className={cn(
-              'text-sm text-foreground/90',
+              'whitespace-pre-wrap break-words text-sm text-foreground/90',
               report.targetSnapshot.title && 'mt-1 text-muted-foreground',
             )}
           >
             {report.targetSnapshot.preview}
           </p>
           <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
-            {report.targetSnapshot.isAnonymous ? (
-              <span className="inline-flex items-center gap-1">
-                匿名作者:{' '}
-                <span className="text-foreground">{report.targetSnapshot.authorUsername}</span>
-              </span>
-            ) : (
-              <span>
-                作者:{' '}
-                <span className="text-foreground">{report.targetSnapshot.authorUsername}</span>
-              </span>
-            )}
+            {report.targetSnapshot.authorUsername &&
+              (report.targetSnapshot.isAnonymous ? (
+                <span className="inline-flex items-center gap-1">
+                  匿名作者:{' '}
+                  <span className="text-foreground">{report.targetSnapshot.authorUsername}</span>
+                </span>
+              ) : (
+                <span>
+                  作者:{' '}
+                  <span className="text-foreground">{report.targetSnapshot.authorUsername}</span>
+                </span>
+              ))}
             {report.targetSnapshot.boardSlug && (
               <span>
                 · 标签: <span className="text-foreground">#{report.targetSnapshot.boardSlug}</span>
               </span>
             )}
+            {report.targetSnapshot.messageCount !== undefined && (
+              <span>· 已固化 {report.targetSnapshot.messageCount} 条消息</span>
+            )}
+            {report.targetSnapshot.createdAt && (
+              <span>· 内容时间 {relativeTime(report.targetSnapshot.createdAt)}</span>
+            )}
           </div>
+          {report.targetSnapshot.evidencePreserved && (
+            <div className="mt-2 inline-flex items-center gap-1 rounded bg-primary/10 px-2 py-1 text-xs text-primary">
+              <ShieldCheck className="size-3.5" /> 举报时证据已固化，原内容变化不会覆盖证据
+            </div>
+          )}
         </div>
 
         {/* Reason */}
@@ -134,7 +160,7 @@ export function ReportCard({ report, onChanged }: { report: AdminReport; onChang
               <p>
                 <span className="font-medium">{report.handledBy?.username ?? '系统'}</span>{' '}
                 <span className="text-muted-foreground">
-                  {report.status === 'resolved' ? '判定违规并处理' : '判定无效驳回'} ·{' '}
+                  {localStatus === 'resolved' ? '举报已结案' : '判定举报不成立'} ·{' '}
                   {report.handledAt && relativeTime(report.handledAt)}
                 </span>
               </p>
@@ -145,54 +171,77 @@ export function ReportCard({ report, onChanged }: { report: AdminReport; onChang
           </div>
         ) : (
           <div className="flex flex-wrap gap-2 pt-1">
-            <Button size="sm" variant="outline" onClick={() => setPending('hide')}>
-              <EyeOff className="size-3.5" /> 隐藏内容
+            <Button size="sm" variant="destructive" onClick={() => setPending('hide')}>
+              <EyeOff className="size-3.5" /> 确认违规并隔离
             </Button>
-            <Button size="sm" variant="default" onClick={() => setPending('resolve')}>
-              <Check className="size-3.5" /> 判定违规
+            <Button size="sm" variant="outline" onClick={() => setPending('resolve')}>
+              <Check className="size-3.5" /> 无需隔离，结案
             </Button>
             <Button size="sm" variant="ghost" onClick={() => setPending('reject')}>
               <X className="size-3.5" /> 驳回举报
             </Button>
-            <Button size="sm" variant="ghost" className="ml-auto" asChild>
-              <a href={`${WEB_APP_URL}/p/${report.targetId}`} target="_blank" rel="noopener">
-                查看原文 <ExternalLink className="size-3.5" />
-              </a>
-            </Button>
+            {report.targetType === 'post' && (
+              <Button size="sm" variant="ghost" className="ml-auto" asChild>
+                <a href={`${WEB_APP_URL}/p/${report.targetId}`} target="_blank" rel="noopener">
+                  查看原文 <ExternalLink className="size-3.5" />
+                </a>
+              </Button>
+            )}
           </div>
         )}
       </CardContent>
 
-      <Dialog open={pending !== null} onOpenChange={(o) => !o && setPending(null)}>
+      <Dialog
+        open={pending !== null}
+        onOpenChange={(open) => {
+          if (!open && !submitting) {
+            setPending(null);
+            setNote('');
+          }
+        }}
+      >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>
-              {pending === 'hide' && '确认隐藏该内容?'}
-              {pending === 'resolve' && '确认判定违规?'}
-              {pending === 'reject' && '确认驳回此举报?'}
+              {pending === 'hide' && '确认隔离该目标?'}
+              {pending === 'resolve' && '确认不隔离目标并结案?'}
+              {pending === 'reject' && '确认举报不成立?'}
             </DialogTitle>
             <DialogDescription>
-              {pending === 'hide' && '内容将立即从公开列表移除,作者会看到「已隐藏」提示。'}
-              {pending === 'resolve' && '记录为「确认违规」并标记举报为已处理。可选填备注。'}
-              {pending === 'reject' && '该举报会标记为无效。重复无效举报的用户会被减权重。'}
+              {pending === 'hide' &&
+                '目标会立即被隐藏、阻断或暂停（取决于举报类型），同目标举报会合并结案。'}
+              {pending === 'resolve' &&
+                '不会主动处罚目标；本举报的证据保全会解除。若没有其他未结举报或风控案件，目标可能恢复举报前状态。'}
+              {pending === 'reject' &&
+                '举报会标记为不成立并解除本举报的证据保全；其他未结举报或风控案件仍会继续限制目标。'}
             </DialogDescription>
           </DialogHeader>
           <Textarea
             value={note}
             onChange={(e) => setNote(e.target.value)}
-            placeholder="处理备注（写入审计日志）"
+            placeholder="处理依据（必填，至少 3 字；写入审计日志）"
             className="resize-none"
             rows={3}
+            maxLength={1000}
+            disabled={submitting}
           />
           <DialogFooter>
-            <Button variant="ghost" onClick={() => setPending(null)}>
+            <Button
+              variant="ghost"
+              disabled={submitting}
+              onClick={() => {
+                setPending(null);
+                setNote('');
+              }}
+            >
               取消
             </Button>
             <Button
-              variant={pending === 'hide' || pending === 'resolve' ? 'destructive' : 'default'}
+              variant={pending === 'hide' ? 'destructive' : 'default'}
+              disabled={submitting || note.trim().length < 3}
               onClick={() => void confirm()}
             >
-              确认
+              {submitting ? '处理中…' : '确认'}
             </Button>
           </DialogFooter>
         </DialogContent>

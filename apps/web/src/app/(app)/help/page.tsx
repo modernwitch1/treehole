@@ -5,7 +5,7 @@ export default function HelpPage() {
       <div className="prose prose-sm dark:prose-invert space-y-4">
         <h3>如何发帖？</h3>
         <p>
-          点击左侧导航栏的“发布帖子”按钮，即可编辑并发布你的帖子。记得加上相关的标签（Tag），更方便大家找到你的帖子。
+          点击左侧导航栏的“发布帖子”按钮，即可编辑并发布。请选择最相关的主题频道，方便同学查找，也便于社区统一管理。
         </p>
 
         <h3>如何匿名？</h3>

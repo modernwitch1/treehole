@@ -5,17 +5,18 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
-import { Switch } from '@/components/ui/switch';
-import { ImagePlus, Loader2, X } from 'lucide-react';
-import { createPost, listBoards, uploadPostImage } from '@/lib/api';
+import { ImagePlus, Loader2, Quote, X } from 'lucide-react';
+import { createPost, getPost, listBoards, uploadPostImage } from '@/lib/api';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
-import type { Board } from '@/types/api';
+import type { Board, Post } from '@/types/api';
+import { CommunitySafetyNotice } from '@/components/community-safety-notice';
 
 export default function SubmitPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const boardParam = searchParams.get('board') ?? '';
+  const quotedPostId = searchParams.get('quote') ?? '';
 
   const [title, setTitle] = React.useState('');
   const [content, setContent] = React.useState('');
@@ -24,7 +25,8 @@ export default function SubmitPage() {
   const [loadingBoards, setLoadingBoards] = React.useState(true);
   const [files, setFiles] = React.useState<File[]>([]);
   const [submitting, setSubmitting] = React.useState(false);
-  const [isAnonymous, setIsAnonymous] = React.useState(true);
+  const [quotedPost, setQuotedPost] = React.useState<Post | null>(null);
+  const [rulesAcknowledged, setRulesAcknowledged] = React.useState(false);
 
   React.useEffect(() => {
     listBoards()
@@ -34,18 +36,22 @@ export default function SubmitPage() {
   }, []);
 
   React.useEffect(() => {
+    if (!quotedPostId) return;
+    getPost(quotedPostId)
+      .then((post) => {
+        setQuotedPost(post ?? null);
+        if (post && !boardParam) setSelectedBoard(post.board.slug);
+      })
+      .catch(() => toast.error('无法加载引用的帖子'));
+  }, [boardParam, quotedPostId]);
+
+  React.useEffect(() => {
     if (boardParam) {
       setSelectedBoard(boardParam);
     }
   }, [boardParam]);
 
   const contentLength = content.trim().length;
-  const currentBoard = boards.find((b) => b.slug === selectedBoard);
-  const publishAnonymously = Boolean(currentBoard?.allowsAnonymous && isAnonymous);
-
-  React.useEffect(() => {
-    if (currentBoard) setIsAnonymous(currentBoard.allowsAnonymous);
-  }, [currentBoard]);
 
   function addFiles(list: FileList | null) {
     if (!list) return;
@@ -71,6 +77,10 @@ export default function SubmitPage() {
       toast.error('内容最多 5000 字');
       return;
     }
+    if (!rulesAcknowledged) {
+      toast.error('请先确认已阅读并遵守社区规则');
+      return;
+    }
 
     setSubmitting(true);
     try {
@@ -81,13 +91,22 @@ export default function SubmitPage() {
         title: title.trim(),
         contentMd: content.trim(),
         boardSlug: selectedBoard,
-        isAnonymous: publishAnonymously,
+        isAnonymous: true,
         imageUrls,
+        quotedPostId: quotedPost?.id,
+        rulesAcknowledged,
       });
-      toast.success('发布成功');
-      router.push(`/p/${post.id}`);
-    } catch {
-      toast.error('发布失败，请重试');
+      if (post.status === 'pending_review') {
+        toast.success('内容已提交审核', {
+          description: '审核通过前不会公开显示，请勿重复发布。',
+        });
+        router.push('/');
+      } else {
+        toast.success('发布成功');
+        router.push(`/p/${post.id}`);
+      }
+    } catch (error) {
+      toast.error((error as Error).message || '发布失败，请重试');
     } finally {
       setSubmitting(false);
     }
@@ -102,6 +121,20 @@ export default function SubmitPage() {
         </p>
       </header>
       <Separator />
+      <CommunitySafetyNotice />
+
+      {quotedPost && (
+        <Card className="border-primary/20 bg-primary/[0.03]">
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center gap-2 text-base"><Quote className="size-4" /> 引用帖子发起讨论</CardTitle>
+            <CardDescription>你的新帖子会保留指向原帖的引用卡片</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <p className="font-semibold">{quotedPost.title}</p>
+            {quotedPost.contentExcerpt && <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">{quotedPost.contentExcerpt}</p>}
+          </CardContent>
+        </Card>
+      )}
 
       <form onSubmit={handleSubmit} className="space-y-6">
         <Card>
@@ -129,48 +162,12 @@ export default function SubmitPage() {
                     <span className="text-xl">{board.icon ?? '📋'}</span>
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-sm font-medium">{board.name}</p>
-                      <p className="truncate text-xs text-muted-foreground">
-                        {board.allowsAnonymous ? '可选匿名' : '公开用户名'}
-                      </p>
+                      <p className="truncate text-xs text-muted-foreground">固定匿名发布</p>
                     </div>
                   </button>
                 ))}
               </div>
             )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">发布身份</CardTitle>
-            <CardDescription>
-              {currentBoard
-                ? currentBoard.allowsAnonymous
-                  ? '这个板块允许你选择匿名昵称或公开账号用户名。'
-                  : '这个板块要求公开账号用户名，校园邮箱和真实姓名仍不会展示。'
-                : '选择板块后即可确认发布身份。'}
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-center justify-between gap-4 rounded-lg border p-3">
-              <div className="min-w-0">
-                <label htmlFor="anonymous-post" className="text-sm font-medium">
-                  {publishAnonymously ? '匿名发布' : '公开用户名发布'}
-                </label>
-                <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
-                  {publishAnonymously
-                    ? '使用同帖稳定、跨帖不可关联的匿名昵称。'
-                    : '帖子会显示你的账号用户名，但不会显示校园邮箱或真实姓名。'}
-                </p>
-              </div>
-              <Switch
-                id="anonymous-post"
-                checked={publishAnonymously}
-                onCheckedChange={setIsAnonymous}
-                disabled={!currentBoard?.allowsAnonymous}
-                aria-label="匿名发布"
-              />
-            </div>
           </CardContent>
         </Card>
 
@@ -258,17 +255,23 @@ export default function SubmitPage() {
                 ))}
               </div>
             )}
-            <p className="text-xs text-muted-foreground">
-              {!currentBoard
-                ? '选择板块后会在这里显示发布身份说明。'
-                : publishAnonymously
-                  ? '本帖将以匿名昵称展示。'
-                  : currentBoard.allowsAnonymous
-                    ? '你已选择公开账号用户名发布。'
-                    : '该板块要求公开账号用户名发布。'}
-            </p>
+            <p className="text-xs text-muted-foreground">所有帖子固定匿名发布，公开名称统一显示为“浙小商”。</p>
           </CardContent>
         </Card>
+
+        <CommunitySafetyNotice />
+
+        <label className="flex cursor-pointer items-start gap-2 rounded-lg border p-3 text-sm">
+          <input
+            type="checkbox"
+            checked={rulesAcknowledged}
+            onChange={(event) => setRulesAcknowledged(event.target.checked)}
+            className="mt-0.5"
+          />
+          <span>
+            我确认内容不含违法低俗、诈骗广告、攻击造谣或隐私泄露信息，并理解匿名展示不等于不可追溯。
+          </span>
+        </label>
 
         <Separator />
 
@@ -276,7 +279,7 @@ export default function SubmitPage() {
           <Button type="button" variant="outline" onClick={() => router.back()}>
             取消
           </Button>
-          <Button type="submit" disabled={submitting}>
+          <Button type="submit" disabled={submitting || !rulesAcknowledged}>
             {submitting && <Loader2 className="mr-2 size-4 animate-spin" />}
             {submitting ? '发布中…' : '发布帖子'}
           </Button>

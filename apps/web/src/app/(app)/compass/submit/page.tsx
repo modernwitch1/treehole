@@ -11,6 +11,7 @@ import { COURSE_GUIDE_COURSES } from '@/data/compass';
 import { createPost } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
+import { CommunitySafetyNotice } from '@/components/community-safety-notice';
 
 export const dynamic = 'force-dynamic';
 
@@ -48,6 +49,7 @@ function SubmitReviewForm() {
   const [semester, setSemester] = React.useState('2025秋季');
   const [submitting, setSubmitting] = React.useState(false);
   const [publishedPostId, setPublishedPostId] = React.useState<string>();
+  const [rulesAcknowledged, setRulesAcknowledged] = React.useState(false);
 
   function toggleTag(tag: string) {
     setSelectedTags((prev) =>
@@ -78,11 +80,17 @@ function SubmitReviewForm() {
         ].join('\n'),
         boardSlug: 'course',
         isAnonymous: true,
+        rulesAcknowledged,
       });
-      setPublishedPostId(post.id);
-      toast.success('课程评价已发布');
-    } catch {
-      toast.error('评价发布失败，请稍后重试');
+      if (post.status === 'pending_review') {
+        toast.success('评价已提交审核，审核通过后公开');
+        router.push('/compass');
+      } else {
+        setPublishedPostId(post.id);
+        toast.success('课程评价已发布');
+      }
+    } catch (error) {
+      toast.error((error as Error).message || '评价发布失败，请稍后重试');
     } finally {
       setSubmitting(false);
     }
@@ -231,12 +239,26 @@ function SubmitReviewForm() {
           </CardContent>
         </Card>
 
+        <CommunitySafetyNotice compact />
+        <label className="flex cursor-pointer items-start gap-2 rounded-lg border p-3 text-sm">
+          <input
+            type="checkbox"
+            checked={rulesAcknowledged}
+            onChange={(event) => setRulesAcknowledged(event.target.checked)}
+            className="mt-0.5"
+          />
+          <span>我确认评价基于真实体验，不造谣攻击、不泄露个人隐私，并遵守社区规则。</span>
+        </label>
+
         <Separator />
         <div className="flex justify-end gap-3">
           <Button type="button" variant="outline" onClick={() => router.back()}>
             取消
           </Button>
-          <Button type="submit" disabled={submitting || !course || !content.trim()}>
+          <Button
+            type="submit"
+            disabled={submitting || !course || !content.trim() || !rulesAcknowledged}
+          >
             {submitting && <Loader2 className="mr-2 size-4 animate-spin" />}
             {submitting ? '提交中…' : '提交评价'}
           </Button>

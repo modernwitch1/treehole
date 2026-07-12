@@ -1,4 +1,5 @@
 import {
+  Equals,
   IsEmail,
   IsIn,
   IsOptional,
@@ -44,6 +45,16 @@ export class RegisterDto {
   @IsUrl({ require_protocol: true, protocols: ['http', 'https'] })
   @MaxLength(2048)
   screenshotUrl?: string;
+
+  @Equals(true, { message: '必须同意用户协议和隐私政策' })
+  acceptTerms!: boolean;
+
+  @Equals(true, { message: '必须阅读并同意社区规则' })
+  acceptCommunityRules!: boolean;
+
+  @IsString()
+  @MaxLength(32)
+  policyVersion!: string;
 }
 
 export class StudentPasswordDto {

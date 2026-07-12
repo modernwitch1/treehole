@@ -21,6 +21,7 @@ enum UserRole {
   user
   moderator
   admin
+  superadmin
 
   @@map("user_role")
 }
@@ -61,6 +62,9 @@ enum ReportTarget {
   post
   comment
   user
+  conversation
+  direct_message
+  chatroom_message
 
   @@map("report_target")
 }
@@ -128,6 +132,71 @@ enum ConversationStatus {
   @@map("conversation_status")
 }
 
+enum ModerationSurface {
+  post
+  comment
+  direct_message
+  chatroom_message
+  upload
+
+  @@map("moderation_surface")
+}
+
+enum ModerationCaseStatus {
+  pending
+  in_review
+  resolved
+  dismissed
+
+  @@map("moderation_case_status")
+}
+
+enum ModerationDecision {
+  allow
+  warn
+  hide
+  delete
+  suspend
+  ban
+
+  @@map("moderation_decision")
+}
+
+enum PolicyAcceptanceSource {
+  registration
+  new_user_daily
+  publish
+  private_message
+  rules_update
+
+  @@map("policy_acceptance_source")
+}
+
+enum SanctionType {
+  warning
+  mute
+  suspension
+  ban
+
+  @@map("sanction_type")
+}
+
+enum SanctionStatus {
+  active
+  expired
+  revoked
+
+  @@map("sanction_status")
+}
+
+enum AppealStatus {
+  pending
+  approved
+  rejected
+
+  @@map("appeal_status")
+}
+
 // ============================================================
 // Users + Auth
 // ============================================================
@@ -142,10 +211,12 @@ model User {
   bio             String?
   dmAllowed       Boolean   @default(true) @map("dm_allowed")
 
-  role            UserRole   @default(user)
-  status          UserStatus @default(active)
-  suspendedUntil  DateTime?  @map("suspended_until") @db.Timestamptz
-  termsAcceptedAt DateTime   @map("terms_accepted_at") @db.Timestamptz
+  role                      UserRole   @default(user)
+  status                    UserStatus @default(active)
+  suspendedUntil            DateTime?  @map("suspended_until") @db.Timestamptz
+  termsAcceptedAt           DateTime   @map("terms_accepted_at") @db.Timestamptz
+  adminTotpSecretCiphertext String?    @map("admin_totp_secret_ciphertext")
+  adminTotpEnabledAt        DateTime?  @map("admin_totp_enabled_at") @db.Timestamptz
 
   lastLoginAt DateTime? @map("last_login_at") @db.Timestamptz
   lastLoginIp String?   @map("last_login_ip") @db.Inet
@@ -154,31 +225,42 @@ model User {
   updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz
   deletedAt DateTime? @map("deleted_at") @db.Timestamptz
 
-  posts             Post[]
-  comments          Comment[]
-  votes             Vote[]
-  reportsCreated    Report[]            @relation("ReporterReports")
-  reportsHandled    Report[]            @relation("HandlerReports")
-  notifications     Notification[]      @relation("RecipientNotifications")
-  notificationsSent Notification[]      @relation("ActorNotifications")
-  announcementsPublished SystemAnnouncement[] @relation("AnnouncementPublisher")
-  refreshTokens     RefreshToken[]
-  emailVerifications EmailVerification[]
-  uploads           Upload[]
-  auditLogs         AuditLog[]
-  boardsCreated     Board[]
-  boardsApplied     Board[]             @relation("BoardApplicant")
-  boardsReviewed    Board[]             @relation("BoardReviewer")
-  sensitiveWords    SensitiveWord[]
-  bannedEmails      BannedEmail[]
-  reviewedRegistrations RegistrationRequest[] @relation("ReviewerRegistrations")
-  conversationsInitiated Conversation[] @relation("ConversationInitiator")
-  conversationsReceived  Conversation[] @relation("ConversationRecipient")
-  conversationsBlocked   Conversation[] @relation("ConversationBlocker")
-  directMessages         DirectMessage[]
-  createdChatrooms       Chatroom[]      @relation("UserCreatedChatrooms")
-  chatroomMessages       ChatroomMessage[] @relation("UserChatroomMessages")
-  chatroomParticipants   ChatroomParticipant[] @relation("UserChatroomParticipants")
+  posts                   Post[]
+  comments                Comment[]
+  votes                   Vote[]
+  reportsCreated          Report[]              @relation("ReporterReports")
+  reportsHandled          Report[]              @relation("HandlerReports")
+  notifications           Notification[]        @relation("RecipientNotifications")
+  notificationsSent       Notification[]        @relation("ActorNotifications")
+  announcementsPublished  SystemAnnouncement[]  @relation("AnnouncementPublisher")
+  refreshTokens           RefreshToken[]
+  emailVerifications      EmailVerification[]
+  uploads                 Upload[]
+  auditLogs               AuditLog[]
+  boardsCreated           Board[]
+  boardsApplied           Board[]               @relation("BoardApplicant")
+  boardsReviewed          Board[]               @relation("BoardReviewer")
+  sensitiveWords          SensitiveWord[]
+  bannedEmails            BannedEmail[]
+  reviewedRegistrations   RegistrationRequest[] @relation("ReviewerRegistrations")
+  conversationsInitiated  Conversation[]        @relation("ConversationInitiator")
+  conversationsReceived   Conversation[]        @relation("ConversationRecipient")
+  conversationsBlocked    Conversation[]        @relation("ConversationBlocker")
+  directMessages          DirectMessage[]
+  createdChatrooms        Chatroom[]            @relation("UserCreatedChatrooms")
+  chatroomMessages        ChatroomMessage[]     @relation("UserChatroomMessages")
+  chatroomParticipants    ChatroomParticipant[] @relation("UserChatroomParticipants")
+  policyAcceptances       PolicyAcceptance[]
+  moderationCasesAuthored ModerationCase[]      @relation("ModerationCaseAuthor")
+  moderationCasesAssigned ModerationCase[]      @relation("ModerationCaseAssignee")
+  moderationCasesResolved ModerationCase[]      @relation("ModerationCaseResolver")
+  sanctionsReceived       Sanction[]            @relation("SanctionSubject")
+  sanctionsImposed        Sanction[]            @relation("SanctionImposer")
+  sanctionsRevoked        Sanction[]            @relation("SanctionRevoker")
+  appealsSubmitted        Appeal[]              @relation("AppealSubmitter")
+  appealsReviewed         Appeal[]              @relation("AppealReviewer")
+  userBlocksCreated       UserBlock[]           @relation("UserBlocker")
+  userBlocksReceived      UserBlock[]           @relation("UserBlocked")
 
   @@index([status, createdAt])
   @@map("users")
@@ -217,12 +299,12 @@ model RefreshToken {
 }
 
 model BannedEmail {
-  id        BigInt   @id @default(autoincrement())
-  email     String   @unique @db.Citext
-  reason    String?
-  bannedBy  BigInt?  @map("banned_by")
-  bannedByUser User? @relation(fields: [bannedBy], references: [id], onDelete: SetNull)
-  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+  id           BigInt   @id @default(autoincrement())
+  email        String   @unique @db.Citext
+  reason       String?
+  bannedBy     BigInt?  @map("banned_by")
+  bannedByUser User?    @relation(fields: [bannedBy], references: [id], onDelete: SetNull)
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz
 
   @@map("banned_emails")
 }
@@ -232,43 +314,43 @@ model BannedEmail {
 // ============================================================
 
 enum BoardStatus {
-  pending   // 待审批
-  active    // 已通过
-  rejected  // 已拒绝
-  archived  // 已归档
+  pending // 待审批
+  active // 已通过
+  rejected // 已拒绝
+  archived // 已归档
 
   @@map("board_status")
 }
 
 model Board {
-  id               BigInt      @id @default(autoincrement())
-  slug             String      @unique @db.VarChar(50)
-  name             String      @db.VarChar(50)
-  description      String?
-  rules            String?
-  icon             String?     @db.VarChar(50)
-  color            String?     @db.VarChar(20)
-  allowsAnonymous  Boolean     @default(false) @map("allows_anonymous")
-  status           BoardStatus @default(active) @map("status")
-  isArchived       Boolean     @default(false) @map("is_archived")
-  postCount        Int         @default(0) @map("post_count")
-  subscriberCount  Int         @default(0) @map("subscriber_count")
-  sortOrder        Int         @default(0) @map("sort_order")
+  id              BigInt      @id @default(autoincrement())
+  slug            String      @unique @db.VarChar(50)
+  name            String      @db.VarChar(50)
+  description     String?
+  rules           String?
+  icon            String?     @db.VarChar(50)
+  color           String?     @db.VarChar(20)
+  allowsAnonymous Boolean     @default(false) @map("allows_anonymous")
+  status          BoardStatus @default(active) @map("status")
+  isArchived      Boolean     @default(false) @map("is_archived")
+  postCount       Int         @default(0) @map("post_count")
+  subscriberCount Int         @default(0) @map("subscriber_count")
+  sortOrder       Int         @default(0) @map("sort_order")
 
   // 申请相关字段
-  applicantId      BigInt?     @map("applicant_id")
-  applicant        User?       @relation("BoardApplicant", fields: [applicantId], references: [id], onDelete: SetNull)
-  applyReason      String?     @map("apply_reason")
-  rejectReason     String?     @map("reject_reason")
-  appliedAt        DateTime?   @map("applied_at") @db.Timestamptz
-  reviewedBy       BigInt?     @map("reviewed_by")
-  reviewer         User?       @relation("BoardReviewer", fields: [reviewedBy], references: [id], onDelete: SetNull)
-  reviewedAt       DateTime?   @map("reviewed_at") @db.Timestamptz
+  applicantId  BigInt?   @map("applicant_id")
+  applicant    User?     @relation("BoardApplicant", fields: [applicantId], references: [id], onDelete: SetNull)
+  applyReason  String?   @map("apply_reason")
+  rejectReason String?   @map("reject_reason")
+  appliedAt    DateTime? @map("applied_at") @db.Timestamptz
+  reviewedBy   BigInt?   @map("reviewed_by")
+  reviewer     User?     @relation("BoardReviewer", fields: [reviewedBy], references: [id], onDelete: SetNull)
+  reviewedAt   DateTime? @map("reviewed_at") @db.Timestamptz
 
-  createdBy        BigInt?     @map("created_by")
-  createdByUser    User?       @relation(fields: [createdBy], references: [id], onDelete: SetNull)
-  createdAt        DateTime    @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt        DateTime    @updatedAt @map("updated_at") @db.Timestamptz
+  createdBy     BigInt?  @map("created_by")
+  createdByUser User?    @relation(fields: [createdBy], references: [id], onDelete: SetNull)
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt     DateTime @updatedAt @map("updated_at") @db.Timestamptz
 
   posts Post[]
 
@@ -278,32 +360,38 @@ model Board {
 }
 
 model Post {
-  id              BigInt        @id @default(autoincrement())
-  boardId         BigInt        @map("board_id")
-  board           Board         @relation(fields: [boardId], references: [id])
-  authorId        BigInt        @map("author_id")
-  author          User          @relation(fields: [authorId], references: [id])
-  title           String        @db.VarChar(200)
-  contentMd       String        @map("content_md")
-  contentHtml     String        @map("content_html")
-  isAnonymous     Boolean       @default(false) @map("is_anonymous")
-  status          ContentStatus @default(published)
-  isPinned        Boolean       @default(false) @map("is_pinned")
-  isLocked        Boolean       @default(false) @map("is_locked")
-  upvotes         Int           @default(0)
-  downvotes       Int           @default(0)
+  id               BigInt        @id @default(autoincrement())
+  boardId          BigInt        @map("board_id")
+  board            Board         @relation(fields: [boardId], references: [id])
+  authorId         BigInt        @map("author_id")
+  author           User          @relation(fields: [authorId], references: [id])
+  quotedPostId     BigInt?       @map("quoted_post_id")
+  quotedPost       Post?         @relation("PostQuotes", fields: [quotedPostId], references: [id], onDelete: SetNull)
+  quotePosts       Post[]        @relation("PostQuotes")
+  title            String        @db.VarChar(200)
+  contentMd        String        @map("content_md")
+  contentHtml      String        @map("content_html")
+  isAnonymous      Boolean       @default(false) @map("is_anonymous")
+  status           ContentStatus @default(published)
+  isPinned         Boolean       @default(false) @map("is_pinned")
+  isLocked         Boolean       @default(false) @map("is_locked")
+  upvotes          Int           @default(0)
+  downvotes        Int           @default(0)
   // score = upvotes - downvotes；由投票事务按 votes 事实表重新汇总
-  score           Int           @default(0)
-  commentCount    Int           @default(0) @map("comment_count")
-  hotScore        Float         @default(0) @map("hot_score")
-  authorIp        String?       @map("author_ip") @db.Inet
-  authorUserAgent String?       @map("author_user_agent")
-  createdAt       DateTime      @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt       DateTime      @updatedAt @map("updated_at") @db.Timestamptz
-  deletedAt       DateTime?     @map("deleted_at") @db.Timestamptz
+  score            Int           @default(0)
+  commentCount     Int           @default(0) @map("comment_count")
+  hotScore         Float         @default(0) @map("hot_score")
+  authorIp         String?       @map("author_ip") @db.Inet
+  authorUserAgent  String?       @map("author_user_agent")
+  moderationLabels Json?         @map("moderation_labels")
+  contentHash      String?       @map("content_hash") @db.VarChar(64)
+  legalHold        Boolean       @default(false) @map("legal_hold")
+  createdAt        DateTime      @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt        DateTime      @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt        DateTime?     @map("deleted_at") @db.Timestamptz
 
-  comments      Comment[]
-  notifications Notification[]
+  comments            Comment[]
+  notifications       Notification[]
   originConversations Conversation[]
 
   // 关键索引参见 §1.5
@@ -311,34 +399,38 @@ model Post {
   @@index([boardId, status, createdAt(sort: Desc)], map: "idx_posts_board_new")
   @@index([boardId, status, score(sort: Desc), id(sort: Desc)], map: "idx_posts_board_top")
   @@index([authorId, status, createdAt(sort: Desc)], map: "idx_posts_author")
+  @@index([quotedPostId], map: "idx_posts_quoted_post")
   @@index([status, hotScore(sort: Desc), id(sort: Desc)], map: "idx_posts_global_hot")
   @@map("posts")
 }
 
 model Comment {
-  id              BigInt                  @id @default(autoincrement())
-  postId          BigInt                  @map("post_id")
-  post            Post                    @relation(fields: [postId], references: [id], onDelete: Cascade)
-  parentId        BigInt?                 @map("parent_id")
-  parent          Comment?                @relation("CommentReplies", fields: [parentId], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  replies         Comment[]               @relation("CommentReplies")
+  id               BigInt                @id @default(autoincrement())
+  postId           BigInt                @map("post_id")
+  post             Post                  @relation(fields: [postId], references: [id], onDelete: Cascade)
+  parentId         BigInt?               @map("parent_id")
+  parent           Comment?              @relation("CommentReplies", fields: [parentId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  replies          Comment[]             @relation("CommentReplies")
   // path 字段类型为 ltree, Prisma 不原生支持, 用 Unsupported
-  path            Unsupported("ltree")?
-  depth           Int                     @db.SmallInt
-  authorId        BigInt                  @map("author_id")
-  author          User                    @relation(fields: [authorId], references: [id])
-  contentMd       String                  @map("content_md")
-  contentHtml     String                  @map("content_html")
-  isAnonymous     Boolean                 @default(false) @map("is_anonymous")
-  status          ContentStatus           @default(published)
-  upvotes         Int                     @default(0)
-  downvotes       Int                     @default(0)
-  score           Int                     @default(0)
-  authorIp        String?                 @map("author_ip") @db.Inet
-  authorUserAgent String?                 @map("author_user_agent")
-  createdAt       DateTime                @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt       DateTime                @updatedAt @map("updated_at") @db.Timestamptz
-  deletedAt       DateTime?               @map("deleted_at") @db.Timestamptz
+  path             Unsupported("ltree")?
+  depth            Int                   @db.SmallInt
+  authorId         BigInt                @map("author_id")
+  author           User                  @relation(fields: [authorId], references: [id])
+  contentMd        String                @map("content_md")
+  contentHtml      String                @map("content_html")
+  isAnonymous      Boolean               @default(false) @map("is_anonymous")
+  status           ContentStatus         @default(published)
+  upvotes          Int                   @default(0)
+  downvotes        Int                   @default(0)
+  score            Int                   @default(0)
+  authorIp         String?               @map("author_ip") @db.Inet
+  authorUserAgent  String?               @map("author_user_agent")
+  moderationLabels Json?                 @map("moderation_labels")
+  contentHash      String?               @map("content_hash") @db.VarChar(64)
+  legalHold        Boolean               @default(false) @map("legal_hold")
+  createdAt        DateTime              @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt        DateTime              @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt        DateTime?             @map("deleted_at") @db.Timestamptz
 
   notifications Notification[]
 
@@ -372,19 +464,24 @@ model Vote {
 // ============================================================
 
 model Report {
-  id             BigInt         @id @default(autoincrement())
-  reporterId     BigInt         @map("reporter_id")
-  reporter       User           @relation("ReporterReports", fields: [reporterId], references: [id], onDelete: Cascade)
-  targetType     ReportTarget   @map("target_type")
-  targetId       BigInt         @map("target_id")
-  category       ReportCategory
-  reason         String?
-  status         ReportStatus   @default(open)
-  handledBy      BigInt?        @map("handled_by")
-  handler        User?          @relation("HandlerReports", fields: [handledBy], references: [id], onDelete: SetNull)
-  handledAt      DateTime?      @map("handled_at") @db.Timestamptz
-  resolutionNote String?        @map("resolution_note")
-  createdAt      DateTime       @default(now()) @map("created_at") @db.Timestamptz
+  id               BigInt         @id @default(autoincrement())
+  reporterId       BigInt         @map("reporter_id")
+  reporter         User           @relation("ReporterReports", fields: [reporterId], references: [id], onDelete: Cascade)
+  targetType       ReportTarget   @map("target_type")
+  targetId         BigInt         @map("target_id")
+  category         ReportCategory
+  reason           String?
+  status           ReportStatus   @default(open)
+  handledBy        BigInt?        @map("handled_by")
+  handler          User?          @relation("HandlerReports", fields: [handledBy], references: [id], onDelete: SetNull)
+  handledAt        DateTime?      @map("handled_at") @db.Timestamptz
+  resolutionNote   String?        @map("resolution_note")
+  evidenceSnapshot Json?          @map("evidence_snapshot")
+  contentHash      String?        @map("content_hash") @db.VarChar(64)
+  priority         Int            @default(0) @db.SmallInt
+  version          Int            @default(1)
+  legalHold        Boolean        @default(false) @map("legal_hold")
+  createdAt        DateTime       @default(now()) @map("created_at") @db.Timestamptz
 
   @@index([status, createdAt])
   @@index([targetType, targetId])
@@ -397,35 +494,35 @@ model Report {
 // ============================================================
 
 model Notification {
-  id              BigInt           @id @default(autoincrement())
-  recipientId     BigInt           @map("recipient_id")
-  recipient       User             @relation("RecipientNotifications", fields: [recipientId], references: [id], onDelete: Cascade)
-  type            NotificationType
-  actorId         BigInt?          @map("actor_id")
-  actor           User?            @relation("ActorNotifications", fields: [actorId], references: [id], onDelete: SetNull)
-  actorAnonymous  Boolean          @default(false) @map("actor_anonymous")
-  postId          BigInt?          @map("post_id")
-  post            Post?            @relation(fields: [postId], references: [id], onDelete: Cascade)
-  commentId       BigInt?          @map("comment_id")
-  comment         Comment?         @relation(fields: [commentId], references: [id], onDelete: Cascade)
-  payload         Json?
-  readAt          DateTime?        @map("read_at") @db.Timestamptz
-  createdAt       DateTime         @default(now()) @map("created_at") @db.Timestamptz
+  id             BigInt           @id @default(autoincrement())
+  recipientId    BigInt           @map("recipient_id")
+  recipient      User             @relation("RecipientNotifications", fields: [recipientId], references: [id], onDelete: Cascade)
+  type           NotificationType
+  actorId        BigInt?          @map("actor_id")
+  actor          User?            @relation("ActorNotifications", fields: [actorId], references: [id], onDelete: SetNull)
+  actorAnonymous Boolean          @default(false) @map("actor_anonymous")
+  postId         BigInt?          @map("post_id")
+  post           Post?            @relation(fields: [postId], references: [id], onDelete: Cascade)
+  commentId      BigInt?          @map("comment_id")
+  comment        Comment?         @relation(fields: [commentId], references: [id], onDelete: Cascade)
+  payload        Json?
+  readAt         DateTime?        @map("read_at") @db.Timestamptz
+  createdAt      DateTime         @default(now()) @map("created_at") @db.Timestamptz
 
   @@index([recipientId, readAt, createdAt(sort: Desc)])
   @@map("notifications")
 }
 
 model SystemAnnouncement {
-  id          BigInt   @id @default(autoincrement())
-  title       String   @db.VarChar(120)
-  body        String
-  linkUrl     String?  @map("link_url")
-  audience    String   @default("all") @db.VarChar(32)
-  publishedBy BigInt   @map("published_by")
-  publisher   User     @relation("AnnouncementPublisher", fields: [publishedBy], references: [id], onDelete: Restrict)
-  recipientCount Int   @default(0) @map("recipient_count")
-  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
+  id             BigInt   @id @default(autoincrement())
+  title          String   @db.VarChar(120)
+  body           String
+  linkUrl        String?  @map("link_url")
+  audience       String   @default("all") @db.VarChar(32)
+  publishedBy    BigInt   @map("published_by")
+  publisher      User     @relation("AnnouncementPublisher", fields: [publishedBy], references: [id], onDelete: Restrict)
+  recipientCount Int      @default(0) @map("recipient_count")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz
 
   @@index([createdAt(sort: Desc)])
   @@map("system_announcements")
@@ -451,6 +548,122 @@ model AuditLog {
   @@index([action, createdAt(sort: Desc)])
   @@index([targetType, targetId])
   @@map("audit_logs")
+}
+
+// ============================================================
+// Community safety cases / policy acknowledgements / sanctions
+// ============================================================
+
+model PolicyAcceptance {
+  id            BigInt                 @id @default(autoincrement())
+  userId        BigInt                 @map("user_id")
+  user          User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  policyVersion String                 @map("policy_version") @db.VarChar(32)
+  source        PolicyAcceptanceSource
+  ip            String?                @db.Inet
+  userAgent     String?                @map("user_agent")
+  createdAt     DateTime               @default(now()) @map("created_at") @db.Timestamptz
+
+  @@index([userId, policyVersion, createdAt(sort: Desc)], map: "policy_acceptances_user_version_created_idx")
+  @@index([source, createdAt(sort: Desc)], map: "policy_acceptances_source_created_idx")
+  @@map("policy_acceptances")
+}
+
+model ModerationCase {
+  id              BigInt               @id @default(autoincrement())
+  surface         ModerationSurface
+  targetId        BigInt?              @map("target_id")
+  authorId        BigInt?              @map("author_id")
+  author          User?                @relation("ModerationCaseAuthor", fields: [authorId], references: [id], onDelete: SetNull)
+  status          ModerationCaseStatus @default(pending)
+  riskLevel       Int                  @default(1) @map("risk_level") @db.SmallInt
+  reasonCodes     Json?                @map("reason_codes")
+  matchedRules    Json?                @map("matched_rules")
+  contentHash     String               @map("content_hash") @db.VarChar(64)
+  contentExcerpt  String?              @map("content_excerpt") @db.VarChar(500)
+  sourceIp        String?              @map("source_ip") @db.Inet
+  sourceUserAgent String?              @map("source_user_agent")
+  assignedTo      BigInt?              @map("assigned_to")
+  assignee        User?                @relation("ModerationCaseAssignee", fields: [assignedTo], references: [id], onDelete: SetNull)
+  resolvedBy      BigInt?              @map("resolved_by")
+  resolver        User?                @relation("ModerationCaseResolver", fields: [resolvedBy], references: [id], onDelete: SetNull)
+  decision        ModerationDecision?
+  resolutionNote  String?              @map("resolution_note")
+  version         Int                  @default(1)
+  legalHold       Boolean              @default(false) @map("legal_hold")
+  resolvedAt      DateTime?            @map("resolved_at") @db.Timestamptz
+  createdAt       DateTime             @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt       DateTime             @updatedAt @map("updated_at") @db.Timestamptz
+
+  sanctions Sanction[]
+
+  @@unique([surface, targetId], map: "moderation_cases_surface_target_key")
+  @@index([status, riskLevel(sort: Desc), createdAt], map: "moderation_cases_queue_idx")
+  @@index([authorId, createdAt(sort: Desc)], map: "moderation_cases_author_created_idx")
+  @@index([assignedTo, status, createdAt], map: "moderation_cases_assignee_status_created_idx")
+  @@map("moderation_cases")
+}
+
+model Sanction {
+  id         BigInt          @id @default(autoincrement())
+  userId     BigInt          @map("user_id")
+  user       User            @relation("SanctionSubject", fields: [userId], references: [id], onDelete: Cascade)
+  caseId     BigInt?         @map("case_id")
+  case       ModerationCase? @relation(fields: [caseId], references: [id], onDelete: SetNull)
+  type       SanctionType
+  status     SanctionStatus  @default(active)
+  scope      String          @default("all") @db.VarChar(32)
+  policyRule String?         @map("policy_rule") @db.VarChar(64)
+  reason     String
+  startsAt   DateTime        @default(now()) @map("starts_at") @db.Timestamptz
+  endsAt     DateTime?       @map("ends_at") @db.Timestamptz
+  imposedBy  BigInt?         @map("imposed_by")
+  imposer    User?           @relation("SanctionImposer", fields: [imposedBy], references: [id], onDelete: SetNull)
+  revokedBy  BigInt?         @map("revoked_by")
+  revoker    User?           @relation("SanctionRevoker", fields: [revokedBy], references: [id], onDelete: SetNull)
+  revokedAt  DateTime?       @map("revoked_at") @db.Timestamptz
+  revokeNote String?         @map("revoke_note")
+  createdAt  DateTime        @default(now()) @map("created_at") @db.Timestamptz
+
+  appeals Appeal[]
+
+  @@index([userId, status, startsAt(sort: Desc)], map: "sanctions_user_status_starts_idx")
+  @@index([caseId], map: "sanctions_case_idx")
+  @@index([status, endsAt], map: "sanctions_status_ends_idx")
+  @@map("sanctions")
+}
+
+model Appeal {
+  id         BigInt       @id @default(autoincrement())
+  sanctionId BigInt       @map("sanction_id")
+  sanction   Sanction     @relation(fields: [sanctionId], references: [id], onDelete: Cascade)
+  userId     BigInt       @map("user_id")
+  user       User         @relation("AppealSubmitter", fields: [userId], references: [id], onDelete: Cascade)
+  reason     String
+  status     AppealStatus @default(pending)
+  reviewedBy BigInt?      @map("reviewed_by")
+  reviewer   User?        @relation("AppealReviewer", fields: [reviewedBy], references: [id], onDelete: SetNull)
+  reviewNote String?      @map("review_note")
+  reviewedAt DateTime?    @map("reviewed_at") @db.Timestamptz
+  createdAt  DateTime     @default(now()) @map("created_at") @db.Timestamptz
+
+  @@unique([sanctionId, userId], map: "appeals_sanction_user_key")
+  @@index([status, createdAt], map: "appeals_status_created_idx")
+  @@index([userId, createdAt(sort: Desc)], map: "appeals_user_created_idx")
+  @@map("appeals")
+}
+
+model UserBlock {
+  id        BigInt   @id @default(autoincrement())
+  blockerId BigInt   @map("blocker_id")
+  blocker   User     @relation("UserBlocker", fields: [blockerId], references: [id], onDelete: Cascade)
+  blockedId BigInt   @map("blocked_id")
+  blocked   User     @relation("UserBlocked", fields: [blockedId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  @@unique([blockerId, blockedId], map: "user_blocks_blocker_blocked_key")
+  @@index([blockedId, createdAt], map: "user_blocks_blocked_created_idx")
+  @@map("user_blocks")
 }
 
 // ============================================================
@@ -489,22 +702,27 @@ enum RegistrationStatus {
 }
 
 model RegistrationRequest {
-  id            BigInt             @id @default(autoincrement())
-  studentId     String             @unique @map("student_id") @db.VarChar(20)
-  email         String             @unique @db.VarChar(255)
-  passwordHash  String             @map("password_hash")
-  username      String             @db.VarChar(50)
-  realName      String?            @map("real_name") @db.VarChar(50)
-  screenshotUrl String?            @map("screenshot_url")
-  verificationCode String?         @map("verification_code") @db.VarChar(10)
-  method        String             @map("method") @db.VarChar(20)
-  status        RegistrationStatus @default(pending)
-  reviewNote    String?            @map("review_note")
-  reviewedBy    BigInt?            @map("reviewed_by")
-  reviewer      User?              @relation("ReviewerRegistrations", fields: [reviewedBy], references: [id], onDelete: SetNull)
-  reviewedAt    DateTime?          @map("reviewed_at") @db.Timestamptz
-  createdAt     DateTime           @default(now()) @map("created_at") @db.Timestamptz
-  expiresAt     DateTime           @map("expires_at") @db.Timestamptz
+  id                      BigInt             @id @default(autoincrement())
+  studentId               String             @unique @map("student_id") @db.VarChar(20)
+  email                   String             @unique @db.VarChar(255)
+  passwordHash            String?            @map("password_hash")
+  username                String             @db.VarChar(50)
+  realName                String?            @map("real_name") @db.VarChar(50)
+  screenshotUrl           String?            @map("screenshot_url")
+  verificationCode        String?            @map("verification_code") @db.VarChar(10)
+  policyVersion           String?            @map("policy_version") @db.VarChar(32)
+  policyAcceptedAt        DateTime?          @map("policy_accepted_at") @db.Timestamptz
+  policyAcceptedIp        String?            @map("policy_accepted_ip") @db.Inet
+  policyAcceptedUserAgent String?            @map("policy_accepted_user_agent")
+  credentialsPurgedAt     DateTime?          @map("credentials_purged_at") @db.Timestamptz
+  method                  String             @map("method") @db.VarChar(20)
+  status                  RegistrationStatus @default(pending)
+  reviewNote              String?            @map("review_note")
+  reviewedBy              BigInt?            @map("reviewed_by")
+  reviewer                User?              @relation("ReviewerRegistrations", fields: [reviewedBy], references: [id], onDelete: SetNull)
+  reviewedAt              DateTime?          @map("reviewed_at") @db.Timestamptz
+  createdAt               DateTime           @default(now()) @map("created_at") @db.Timestamptz
+  expiresAt               DateTime           @map("expires_at") @db.Timestamptz
 
   @@index([status, createdAt])
   @@map("registration_requests")
@@ -515,20 +733,22 @@ model RegistrationRequest {
 // ============================================================
 
 model Upload {
-  id                String           @id @default(uuid()) @db.Uuid
-  userId            BigInt           @map("user_id")
-  user              User             @relation(fields: [userId], references: [id], onDelete: Cascade)
-  s3Key             String           @unique @map("s3_key")
-  thumbnailKey      String?          @map("thumbnail_key")
-  mimeType          String           @map("mime_type") @db.VarChar(64)
-  sizeBytes         Int              @map("size_bytes")
-  width             Int?
-  height            Int?
-  moderationStatus  ModerationStatus @default(pending) @map("moderation_status")
-  moderationLabels  Json?            @map("moderation_labels")
-  attachedToType    String?          @map("attached_to_type") @db.VarChar(32)
-  attachedToId      BigInt?          @map("attached_to_id")
-  createdAt         DateTime         @default(now()) @map("created_at") @db.Timestamptz
+  id               String           @id @default(uuid()) @db.Uuid
+  userId           BigInt           @map("user_id")
+  user             User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  s3Key            String           @unique @map("s3_key")
+  thumbnailKey     String?          @map("thumbnail_key")
+  mimeType         String           @map("mime_type") @db.VarChar(64)
+  sizeBytes        Int              @map("size_bytes")
+  width            Int?
+  height           Int?
+  moderationStatus ModerationStatus @default(pending) @map("moderation_status")
+  moderationLabels Json?            @map("moderation_labels")
+  contentHash      String?          @map("content_hash") @db.VarChar(64)
+  legalHold        Boolean          @default(false) @map("legal_hold")
+  attachedToType   String?          @map("attached_to_type") @db.VarChar(32)
+  attachedToId     BigInt?          @map("attached_to_id")
+  createdAt        DateTime         @default(now()) @map("created_at") @db.Timestamptz
 
   @@index([userId, createdAt])
   @@index([moderationStatus])
@@ -541,19 +761,19 @@ model Upload {
 // ============================================================
 
 model Conversation {
-  id           BigInt             @id @default(autoincrement())
-  initiatorId  BigInt             @map("initiator_id")
-  initiator    User               @relation("ConversationInitiator", fields: [initiatorId], references: [id], onDelete: Cascade)
-  recipientId  BigInt             @map("recipient_id")
-  recipient    User               @relation("ConversationRecipient", fields: [recipientId], references: [id], onDelete: Cascade)
-  originPostId BigInt?            @map("origin_post_id")
-  originPost   Post?              @relation(fields: [originPostId], references: [id], onDelete: SetNull)
-  status       ConversationStatus @default(pending)
-  blockedById  BigInt?            @map("blocked_by_id")
-  blockedBy    User?              @relation("ConversationBlocker", fields: [blockedById], references: [id], onDelete: SetNull)
-  lastMessageAt DateTime          @default(now()) @map("last_message_at") @db.Timestamptz
-  createdAt    DateTime           @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt    DateTime           @updatedAt @map("updated_at") @db.Timestamptz
+  id            BigInt             @id @default(autoincrement())
+  initiatorId   BigInt             @map("initiator_id")
+  initiator     User               @relation("ConversationInitiator", fields: [initiatorId], references: [id], onDelete: Cascade)
+  recipientId   BigInt             @map("recipient_id")
+  recipient     User               @relation("ConversationRecipient", fields: [recipientId], references: [id], onDelete: Cascade)
+  originPostId  BigInt?            @map("origin_post_id")
+  originPost    Post?              @relation(fields: [originPostId], references: [id], onDelete: SetNull)
+  status        ConversationStatus @default(pending)
+  blockedById   BigInt?            @map("blocked_by_id")
+  blockedBy     User?              @relation("ConversationBlocker", fields: [blockedById], references: [id], onDelete: SetNull)
+  lastMessageAt DateTime           @default(now()) @map("last_message_at") @db.Timestamptz
+  createdAt     DateTime           @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt     DateTime           @updatedAt @map("updated_at") @db.Timestamptz
 
   messages DirectMessage[]
 
@@ -564,18 +784,25 @@ model Conversation {
 }
 
 model DirectMessage {
-  id             BigInt       @id @default(autoincrement())
-  conversationId BigInt       @map("conversation_id")
-  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
-  senderId       BigInt       @map("sender_id")
-  sender         User         @relation(fields: [senderId], references: [id], onDelete: Cascade)
-  contentMd      String       @map("content_md")
-  contentHtml    String       @map("content_html")
-  readAt         DateTime?    @map("read_at") @db.Timestamptz
-  createdAt      DateTime     @default(now()) @map("created_at") @db.Timestamptz
+  id               BigInt        @id @default(autoincrement())
+  conversationId   BigInt        @map("conversation_id")
+  conversation     Conversation  @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  senderId         BigInt        @map("sender_id")
+  sender           User          @relation(fields: [senderId], references: [id], onDelete: Cascade)
+  contentMd        String        @map("content_md")
+  contentHtml      String        @map("content_html")
+  status           ContentStatus @default(published)
+  moderationLabels Json?         @map("moderation_labels")
+  contentHash      String?       @map("content_hash") @db.VarChar(64)
+  senderIp         String?       @map("sender_ip") @db.Inet
+  senderUserAgent  String?       @map("sender_user_agent")
+  legalHold        Boolean       @default(false) @map("legal_hold")
+  readAt           DateTime?     @map("read_at") @db.Timestamptz
+  createdAt        DateTime      @default(now()) @map("created_at") @db.Timestamptz
 
   @@index([conversationId, createdAt])
   @@index([senderId, createdAt(sort: Desc)])
+  @@index([status, createdAt(sort: Desc)])
   @@map("direct_messages")
 }
 
@@ -595,9 +822,10 @@ model Chatroom {
   createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz
   expiresAt     DateTime  @map("expires_at") @db.Timestamptz
   closedAt      DateTime? @map("closed_at") @db.Timestamptz
-  
-  messages      ChatroomMessage[]
-  participants  ChatroomParticipant[]
+  legalHold     Boolean   @default(false) @map("legal_hold")
+
+  messages     ChatroomMessage[]
+  participants ChatroomParticipant[]
 
   @@index([createdAt])
   @@index([closedAt, expiresAt])
@@ -617,16 +845,22 @@ model ChatroomParticipant {
 }
 
 model ChatroomMessage {
-  id          BigInt   @id @default(autoincrement())
-  chatroomId  BigInt   @map("chatroom_id")
-  chatroom    Chatroom @relation(fields: [chatroomId], references: [id], onDelete: Cascade)
-  senderId    BigInt   @map("sender_id")
-  sender      User     @relation("UserChatroomMessages", fields: [senderId], references: [id], onDelete: Cascade)
-  content     String   @db.VarChar(2000)
-  senderIp    String   @map("sender_ip") @db.Inet
-  isFlagged   Boolean  @default(false) @map("is_flagged")
-  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
+  id               BigInt        @id @default(autoincrement())
+  chatroomId       BigInt        @map("chatroom_id")
+  chatroom         Chatroom      @relation(fields: [chatroomId], references: [id], onDelete: Cascade)
+  senderId         BigInt        @map("sender_id")
+  sender           User          @relation("UserChatroomMessages", fields: [senderId], references: [id], onDelete: Cascade)
+  content          String        @db.VarChar(2000)
+  senderIp         String        @map("sender_ip") @db.Inet
+  senderUserAgent  String?       @map("sender_user_agent")
+  status           ContentStatus @default(published)
+  moderationLabels Json?         @map("moderation_labels")
+  contentHash      String?       @map("content_hash") @db.VarChar(64)
+  legalHold        Boolean       @default(false) @map("legal_hold")
+  isFlagged        Boolean       @default(false) @map("is_flagged")
+  createdAt        DateTime      @default(now()) @map("created_at") @db.Timestamptz
 
   @@index([chatroomId, createdAt])
+  @@index([status, createdAt(sort: Desc)])
   @@map("chatroom_messages")
 }

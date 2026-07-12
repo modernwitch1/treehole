@@ -13,10 +13,16 @@ import { RedisService } from '../redis/redis.module';
 import { AppConfig } from '../config/app.config';
 import { RateLimitService } from '../common/security/rate-limit.service';
 
+export type AdminRole = 'superadmin' | 'admin' | 'moderator';
+
 export interface AdminPrincipal {
   id: string;
   username: string;
-  role: 'admin' | 'moderator';
+  role: AdminRole;
+}
+
+export function isAdminRole(role: string): role is AdminRole {
+  return role === 'superadmin' || role === 'admin' || role === 'moderator';
 }
 
 @Injectable()
@@ -29,22 +35,23 @@ export class AdminAuthService {
     private readonly rateLimit: RateLimitService,
   ) {}
 
-  async login(username: string, password: string, totpCode?: string, ip?: string) {
+  async login(
+    username: string,
+    password: string,
+    totpCode?: string,
+    ip?: string,
+    userAgent?: string,
+  ) {
     const normalizedUsername = username.trim();
     await Promise.all([
       this.rateLimit.consume('admin-login-ip', ip ?? 'unknown', 20, 15 * 60),
-      this.rateLimit.consume(
-        'admin-login-account',
-        normalizedUsername.toLowerCase(),
-        10,
-        15 * 60,
-      ),
+      this.rateLimit.consume('admin-login-account', normalizedUsername.toLowerCase(), 10, 15 * 60),
     ]);
     const user = await this.prisma.user.findFirst({
       where: {
         OR: [{ username: normalizedUsername }, { email: normalizedUsername.toLowerCase() }],
-        role: { in: ['admin', 'moderator'] },
-        status: { not: 'banned' },
+        role: { in: ['superadmin', 'admin', 'moderator'] },
+        status: 'active',
         deletedAt: null,
       },
     });
@@ -55,6 +62,9 @@ export class AdminAuthService {
     const { verify } = await import('argon2');
     const passwordValid = await verify(user.passwordHash, password);
     if (!passwordValid) {
+      await this.securityAudit('admin.login.failed', user.id, ip, userAgent, {
+        reason: 'invalid_credentials',
+      });
       throw new UnauthorizedException('管理员账号或密码错误');
     }
 
@@ -63,10 +73,16 @@ export class AdminAuthService {
     if (totpSecret) {
       // 2FA is enabled, require TOTP code
       if (!totpCode) {
+        await this.securityAudit('admin.login.failed', user.id, ip, userAgent, {
+          reason: 'totp_required',
+        });
         throw new UnauthorizedException('请输入验证码');
       }
       const counter = this.findTotpCounter(totpSecret, totpCode);
       if (counter === null) {
+        await this.securityAudit('admin.login.failed', user.id, ip, userAgent, {
+          reason: 'invalid_totp',
+        });
         throw new UnauthorizedException('验证码错误');
       }
       const accepted = await this.redis.client.set(
@@ -77,6 +93,9 @@ export class AdminAuthService {
         'NX',
       );
       if (accepted !== 'OK') {
+        await this.securityAudit('admin.login.failed', user.id, ip, userAgent, {
+          reason: 'reused_totp',
+        });
         throw new UnauthorizedException('验证码已使用，请等待新验证码');
       }
     }
@@ -95,6 +114,7 @@ export class AdminAuthService {
       audience: 'forum-admin',
     });
     await this.redis.client.set(`admin-session:${jti}`, String(user.id), 'EX', 8 * 3600);
+    await this.securityAudit('admin.login.succeeded', user.id, ip, userAgent, { jti });
     return token;
   }
 
@@ -113,9 +133,6 @@ export class AdminAuthService {
       if (payload.type !== 'admin') {
         throw new UnauthorizedException('无后台权限');
       }
-      if (payload.role !== 'admin' && payload.role !== 'moderator') {
-        throw new UnauthorizedException('无后台权限');
-      }
       if (!payload.jti) {
         throw new UnauthorizedException('无效登录态');
       }
@@ -124,12 +141,7 @@ export class AdminAuthService {
         throw new UnauthorizedException('登录已失效');
       }
       const user = await this.prisma.user.findUnique({ where: { id: BigInt(payload.sub) } });
-      if (
-        !user ||
-        user.deletedAt ||
-        user.status === 'banned' ||
-        (user.role !== 'admin' && user.role !== 'moderator')
-      ) {
+      if (!user || user.deletedAt || user.status !== 'active' || !isAdminRole(user.role)) {
         throw new UnauthorizedException('无后台权限');
       }
       return { id: String(user.id), username: user.username, role: user.role };
@@ -138,17 +150,26 @@ export class AdminAuthService {
     }
   }
 
-  async logout(token: string | undefined): Promise<void> {
+  async logout(token: string | undefined, ip?: string, userAgent?: string): Promise<void> {
     if (!token) {
       return;
     }
     try {
-      const payload = this.jwt.verify<{ jti?: string }>(token, {
+      const payload = this.jwt.verify<{ sub?: string; jti?: string }>(token, {
         issuer: 'zjgsu-treehole',
         audience: 'forum-admin',
       });
       if (payload.jti) {
         await this.redis.client.del(`admin-session:${payload.jti}`);
+      }
+      if (payload.sub) {
+        await this.securityAudit(
+          'admin.logout',
+          BigInt(payload.sub),
+          ip,
+          userAgent,
+          payload.jti ? { jti: payload.jti } : {},
+        );
       }
     } catch {
       // Logout is intentionally idempotent even for an already-expired token.
@@ -158,11 +179,21 @@ export class AdminAuthService {
   /**
    * Setup 2FA: Generate a new TOTP secret and return provisioning URI
    */
-  async setup2fa(userId: string) {
+  async setup2fa(userId: string, currentPassword: string, ip?: string, userAgent?: string) {
     await this.rateLimit.consume('admin-2fa-setup', userId, 5, 3600);
     const user = await this.prisma.user.findUnique({ where: { id: BigInt(userId) } });
-    if (!user) {
+    if (!user || user.status !== 'active' || !isAdminRole(user.role)) {
       throw new BadRequestException('用户不存在');
+    }
+    if (user.adminTotpSecretCiphertext) {
+      throw new BadRequestException('2FA 已启用，如需更换请先使用当前验证码禁用');
+    }
+    const { verify } = await import('argon2');
+    if (!(await verify(user.passwordHash, currentPassword))) {
+      await this.securityAudit('admin.2fa.setup_failed', user.id, ip, userAgent, {
+        reason: 'invalid_password',
+      });
+      throw new BadRequestException('当前密码错误');
     }
 
     // Generate a new secret (160 bits = 20 bytes)
@@ -171,6 +202,7 @@ export class AdminAuthService {
     // Store the secret in Redis with a temporary key
     const setupKey = `admin-2fa-setup:${userId}`;
     await this.redis.client.set(setupKey, this.protectSecret(secret), 'EX', 300);
+    await this.securityAudit('admin.2fa.setup_started', user.id, ip, userAgent);
 
     // Generate provisioning URI
     const issuer = encodeURIComponent('浙工商树洞管理后台');
@@ -189,7 +221,7 @@ export class AdminAuthService {
   /**
    * Confirm 2FA setup: Verify the TOTP code and enable 2FA
    */
-  async confirm2fa(userId: string, totpCode: string) {
+  async confirm2fa(userId: string, totpCode: string, ip?: string, userAgent?: string) {
     await this.rateLimit.consume('admin-2fa-confirm', userId, 10, 5 * 60);
     const setupKey = `admin-2fa-setup:${userId}`;
     const protectedSecret = await this.redis.client.get(setupKey);
@@ -205,27 +237,35 @@ export class AdminAuthService {
       throw new BadRequestException('验证码错误，请重试');
     }
 
-    const totpKey = `admin-2fa:${userId}`;
-    await this.redis.client.set(totpKey, this.protectSecret(secret));
+    await this.prisma.user.update({
+      where: { id: BigInt(userId) },
+      data: {
+        adminTotpSecretCiphertext: this.protectSecret(secret),
+        adminTotpEnabledAt: new Date(),
+      },
+    });
 
     // Remove the setup key
     await this.redis.client.del(setupKey);
+    await this.securityAudit('admin.2fa.enabled', BigInt(userId), ip, userAgent);
+    await this.revokeAdminSessions(userId);
 
-    return { ok: true, message: '2FA已启用' };
+    return { ok: true, message: '2FA已启用，请重新登录', requiresRelogin: true };
   }
 
   /**
    * Disable 2FA: Requires current TOTP code for verification
    */
-  async disable2fa(userId: string, totpCode: string) {
+  async disable2fa(userId: string, totpCode: string, ip?: string, userAgent?: string) {
     await this.rateLimit.consume('admin-2fa-disable', userId, 10, 5 * 60);
-    const totpKey = `admin-2fa:${userId}`;
-    const protectedSecret = await this.redis.client.get(totpKey);
-
-    if (!protectedSecret) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: BigInt(userId) },
+      select: { adminTotpSecretCiphertext: true },
+    });
+    if (!user?.adminTotpSecretCiphertext) {
       throw new BadRequestException('2FA未启用');
     }
-    const secret = this.unprotectSecret(protectedSecret);
+    const secret = this.unprotectSecret(user.adminTotpSecretCiphertext);
 
     // Verify the TOTP code
     const isValid = this.verifyTotp(secret, totpCode);
@@ -234,11 +274,18 @@ export class AdminAuthService {
     }
 
     // Remove the secret
-    await this.redis.client.del(totpKey);
+    await this.prisma.user.update({
+      where: { id: BigInt(userId) },
+      data: { adminTotpSecretCiphertext: null, adminTotpEnabledAt: null },
+    });
+    await this.redis.client.del(`admin-2fa:${userId}`);
+    await this.securityAudit('admin.2fa.disabled', BigInt(userId), ip, userAgent);
+    await this.revokeAdminSessions(userId);
 
     return {
       ok: true,
       message: this.config.isProduction ? '个人2FA已移除，系统级2FA仍然有效' : '2FA已禁用',
+      requiresRelogin: true,
     };
   }
 
@@ -246,15 +293,54 @@ export class AdminAuthService {
    * Check if 2FA is enabled for a user
    */
   async get2faStatus(userId: string) {
-    const totpKey = `admin-2fa:${userId}`;
-    const enabled = await this.redis.client.exists(totpKey);
+    const user = await this.prisma.user.findUnique({
+      where: { id: BigInt(userId) },
+      select: { adminTotpEnabledAt: true },
+    });
     const systemFallback = Boolean(
       this.config.isProduction && this.config.get('ADMIN_TOTP_SECRET')?.trim(),
     );
-    return { enabled: enabled === 1 || systemFallback };
+    return {
+      enabled: Boolean(user?.adminTotpEnabledAt) || systemFallback,
+      personalEnabled: Boolean(user?.adminTotpEnabledAt),
+      systemFallback,
+    };
+  }
+
+  async verifyStepUp(userId: string, totpCode: string) {
+    await this.rateLimit.consume('admin-2fa-step-up', userId, 10, 5 * 60);
+    if (typeof totpCode !== 'string' || !/^\d{6}$/.test(totpCode.trim())) {
+      throw new BadRequestException('请输入 6 位二次验证码');
+    }
+    const secret = await this.getTotpSecret(userId);
+    if (!secret) {
+      throw new BadRequestException('请先为管理员账号启用二次验证');
+    }
+    const counter = this.findTotpCounter(secret, totpCode);
+    if (counter === null) {
+      throw new BadRequestException('二次验证码错误');
+    }
+    const accepted = await this.redis.client.set(
+      `admin-2fa-used:${userId}:${counter}`,
+      '1',
+      'EX',
+      90,
+      'NX',
+    );
+    if (accepted !== 'OK') {
+      throw new BadRequestException('该验证码已使用，请等待新验证码');
+    }
+    return true;
   }
 
   private async getTotpSecret(userId: string): Promise<string | null> {
+    const user = await this.prisma.user.findUnique({
+      where: { id: BigInt(userId) },
+      select: { adminTotpSecretCiphertext: true },
+    });
+    if (user?.adminTotpSecretCiphertext) {
+      return this.unprotectSecret(user.adminTotpSecretCiphertext);
+    }
     const totpKey = `admin-2fa:${userId}`;
     const value = await this.redis.client.get(totpKey);
     if (!value) {
@@ -263,10 +349,55 @@ export class AdminAuthService {
     }
     // Existing records may have a TTL or be plaintext. Migrate them lazily.
     const secret = this.unprotectSecret(value);
-    if (!value.startsWith('v1.')) {
-      await this.redis.client.set(totpKey, this.protectSecret(secret));
-    }
+    await this.prisma.user.update({
+      where: { id: BigInt(userId) },
+      data: {
+        adminTotpSecretCiphertext: this.protectSecret(secret),
+        adminTotpEnabledAt: new Date(),
+      },
+    });
+    await this.redis.client.del(totpKey);
     return secret;
+  }
+
+  private async securityAudit(
+    action: string,
+    actorId: bigint,
+    ip?: string,
+    userAgent?: string,
+    metadata: Record<string, string> = {},
+  ) {
+    await this.prisma.auditLog.create({
+      data: {
+        actorId,
+        action,
+        targetType: 'admin-session',
+        ip: ip && ip !== 'unknown' ? ip : null,
+        userAgent: userAgent?.slice(0, 512),
+        metadata,
+      },
+    });
+  }
+
+  private async revokeAdminSessions(userId: string) {
+    let cursor = '0';
+    do {
+      const [nextCursor, keys] = await this.redis.client.scan(
+        cursor,
+        'MATCH',
+        'admin-session:*',
+        'COUNT',
+        100,
+      );
+      cursor = nextCursor;
+      if (keys.length > 0) {
+        const values = await this.redis.client.mget(keys);
+        const ownedKeys = keys.filter((_, index) => values[index] === userId);
+        if (ownedKeys.length > 0) {
+          await this.redis.client.del(...ownedKeys);
+        }
+      }
+    } while (cursor !== '0');
   }
 
   private verifyTotp(secret: string, code: string): boolean {

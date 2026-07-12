@@ -1,17 +1,18 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { createHmac } from 'crypto';
-import MarkdownIt from 'markdown-it';
-import type { ConversationStatus } from '@prisma/client';
+import type { ConversationStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.module';
 import { AppConfig } from '../config/app.config';
 import { ModerationService } from '../common/moderation.service';
 import { RateLimitService } from '../common/security/rate-limit.service';
+import { COMMUNITY_RULES_VERSION } from '../common/community-safety.constants';
+import { createSafeMarkdownRenderer } from '../common/safe-markdown';
 
 type ConversationWithRelations = Awaited<ReturnType<MessagesService['findConversationForUser']>>;
 
 @Injectable()
 export class MessagesService {
-  private readonly markdown = new MarkdownIt({ html: false, linkify: true, breaks: true });
+  private readonly markdown = createSafeMarkdownRenderer();
 
   constructor(
     private readonly prisma: PrismaService,
@@ -27,6 +28,11 @@ export class MessagesService {
     const conversations = await this.prisma.conversation.findMany({
       where: {
         OR: [{ initiatorId: userId }, { recipientId: userId }],
+        messages: {
+          some: {
+            OR: [{ senderId: userId }, { status: 'published' }],
+          },
+        },
         ...cursorWhere,
       },
       orderBy: { lastMessageAt: 'desc' },
@@ -39,7 +45,11 @@ export class MessagesService {
             board: { select: { name: true } },
           },
         },
-        messages: { orderBy: { createdAt: 'desc' }, take: 1 },
+        messages: {
+          where: { OR: [{ senderId: userId }, { status: 'published' }] },
+          orderBy: { createdAt: 'desc' },
+          take: 1,
+        },
       },
     });
 
@@ -53,6 +63,7 @@ export class MessagesService {
             conversationId: conversation.id,
             senderId: { not: userId },
             readAt: null,
+            status: 'published',
           },
         });
         return this.toConversation(conversation, userId, unreadCount);
@@ -72,31 +83,75 @@ export class MessagesService {
     }
 
     await this.prisma.directMessage.updateMany({
-      where: { conversationId: conversation.id, senderId: { not: userId }, readAt: null },
+      where: {
+        conversationId: conversation.id,
+        senderId: { not: userId },
+        readAt: null,
+        status: 'published',
+      },
       data: { readAt: new Date() },
     });
 
+    const visibleMessages = conversation.messages.filter(
+      (message) => message.senderId === userId || message.status === 'published',
+    );
+
     return {
       conversation: this.toConversation(conversation, userId, 0),
-      messages: conversation.messages.map((message) => ({
+      messages: visibleMessages.map((message) => ({
         id: String(message.id),
         conversationId: String(message.conversationId),
         sender: message.senderId === userId ? 'me' : 'partner',
         contentMd: message.contentMd,
         contentHtml: message.contentHtml,
         createdAt: message.createdAt.toISOString(),
-        status: message.senderId === userId ? (message.readAt ? 'read' : 'sent') : undefined,
+        status:
+          message.senderId === userId
+            ? message.status === 'pending_review'
+              ? 'pending_review'
+              : message.status === 'hidden' || message.status === 'deleted'
+                ? 'not_delivered'
+                : message.readAt
+                  ? 'read'
+                  : 'sent'
+            : undefined,
       })),
       canSendMore: this.canSendMore(conversation, userId),
       blockedReason: this.blockedReason(conversation, userId),
     };
   }
 
-  async initiateConversation(userId: bigint, originPostId: string, initialMessage: string) {
+  async initiateConversation(
+    userId: bigint,
+    originPostId: string,
+    initialMessage: string,
+    rulesAcknowledged: boolean,
+    ip?: string,
+    userAgent?: string,
+  ) {
     await this.rateLimit.consume('initiate-message-user', String(userId), 10, 3600);
-    await this.assertCanWrite(userId);
+    if (!rulesAcknowledged) {
+      throw new BadRequestException('请先确认私信同样遵守社区规则');
+    }
+    const sender = await this.assertCanWrite(userId);
+    if (Date.now() - sender.createdAt.getTime() < 7 * 24 * 60 * 60 * 1000) {
+      await this.rateLimit.consume(
+        'initiate-message-new-user',
+        String(userId),
+        3,
+        3600,
+        '新用户保护期内每小时最多发起 3 个陌生会话',
+      );
+    }
     const rawContent = this.validateContent(initialMessage, 500);
-    const { content: contentMd } = await this.moderation.moderateOrThrow(rawContent);
+    const moderationContext = {
+      surface: 'direct_message' as const,
+      authorId: userId,
+      ip,
+      userAgent,
+    };
+    const moderated = await this.moderation.moderateOrThrow(rawContent, moderationContext);
+    const contentMd = moderated.content;
     const post = await this.prisma.post.findFirst({
       where: { id: this.parseId(originPostId), status: 'published' },
       include: { author: true },
@@ -113,8 +168,20 @@ export class MessagesService {
     if (post.author.status !== 'active') {
       return { ok: false, error: 'blocked' as const, message: '对方账号暂不可用' };
     }
+    const block = await this.prisma.userBlock.findFirst({
+      where: {
+        OR: [
+          { blockerId: userId, blockedId: post.authorId },
+          { blockerId: post.authorId, blockedId: userId },
+        ],
+      },
+      select: { id: true },
+    });
+    if (block) {
+      return { ok: false, error: 'blocked' as const, message: '无法向该用户发起私信' };
+    }
 
-    const conversation = await this.prisma.$transaction(async (tx) => {
+    const result = await this.prisma.$transaction(async (tx) => {
       const created = await tx.conversation.create({
         data: {
           initiatorId: userId,
@@ -124,31 +191,73 @@ export class MessagesService {
           lastMessageAt: new Date(),
         },
       });
-      await tx.directMessage.create({
+      const message = await tx.directMessage.create({
         data: {
           conversationId: created.id,
           senderId: userId,
           contentMd,
           contentHtml: this.renderMd(contentMd),
+          status: moderated.status,
+          moderationLabels: this.moderation.moderationLabels(
+            moderated,
+          ) as unknown as Prisma.InputJsonValue,
+          contentHash: moderated.contentHash,
+          senderIp: ip && ip !== 'unknown' ? ip : null,
+          senderUserAgent: userAgent?.slice(0, 512),
+          legalHold: moderated.status === 'pending_review' && moderated.riskLevel >= 4,
         },
       });
-      return created;
+      await tx.policyAcceptance.create({
+        data: {
+          userId,
+          policyVersion: COMMUNITY_RULES_VERSION,
+          source: 'private_message',
+          ip: ip && ip !== 'unknown' ? ip : null,
+          userAgent: userAgent?.slice(0, 512),
+        },
+      });
+      return { conversation: created, message };
     });
 
-    return { ok: true, conversationId: String(conversation.id) };
+    if (moderated.status === 'pending_review') {
+      await this.moderation.recordCase(moderated, moderationContext, result.message.id, rawContent);
+    }
+
+    return {
+      ok: true,
+      conversationId: String(result.conversation.id),
+      moderationStatus: moderated.status,
+    };
   }
 
-  async sendMessage(id: string, userId: bigint, content: string) {
+  async sendMessage(
+    id: string,
+    userId: bigint,
+    content: string,
+    rulesAcknowledged: boolean,
+    ip?: string,
+    userAgent?: string,
+  ) {
     await this.rateLimit.consume('direct-message-user', String(userId), 30, 60);
+    if (!rulesAcknowledged) {
+      throw new BadRequestException('请先确认私信同样遵守社区规则');
+    }
     await this.assertCanWrite(userId);
     const rawContent = this.validateContent(content, 1000);
-    const { content: contentMd } = await this.moderation.moderateOrThrow(rawContent);
+    const moderationContext = {
+      surface: 'direct_message' as const,
+      authorId: userId,
+      ip,
+      userAgent,
+    };
+    const moderated = await this.moderation.moderateOrThrow(rawContent, moderationContext);
+    const contentMd = moderated.content;
     const conversation = await this.findConversationForUser(id, userId);
     if (!conversation) {
       throw new NotFoundException('会话不存在');
     }
 
-    await this.prisma.$transaction(async (tx) => {
+    const message = await this.prisma.$transaction(async (tx) => {
       const fresh = await tx.conversation.findFirst({
         where: { id: conversation.id },
       });
@@ -159,23 +268,47 @@ export class MessagesService {
         throw new BadRequestException('对方回复前只能发送一条消息');
       }
 
-      await tx.directMessage.create({
+      const created = await tx.directMessage.create({
         data: {
           conversationId: conversation.id,
           senderId: userId,
           contentMd,
           contentHtml: this.renderMd(contentMd),
+          status: moderated.status,
+          moderationLabels: this.moderation.moderationLabels(
+            moderated,
+          ) as unknown as Prisma.InputJsonValue,
+          contentHash: moderated.contentHash,
+          senderIp: ip && ip !== 'unknown' ? ip : null,
+          senderUserAgent: userAgent?.slice(0, 512),
+          legalHold: moderated.status === 'pending_review' && moderated.riskLevel >= 4,
         },
       });
       await tx.conversation.update({
         where: { id: conversation.id },
         data: {
-          status: fresh.status === 'pending' ? 'active' : fresh.status,
-          lastMessageAt: new Date(),
+          status:
+            moderated.status === 'published' && fresh.status === 'pending'
+              ? 'active'
+              : fresh.status,
+          ...(moderated.status === 'published' ? { lastMessageAt: new Date() } : {}),
         },
       });
+      await tx.policyAcceptance.create({
+        data: {
+          userId,
+          policyVersion: COMMUNITY_RULES_VERSION,
+          source: 'private_message',
+          ip: ip && ip !== 'unknown' ? ip : null,
+          userAgent: userAgent?.slice(0, 512),
+        },
+      });
+      return created;
     });
-    return { ok: true };
+    if (moderated.status === 'pending_review') {
+      await this.moderation.recordCase(moderated, moderationContext, message.id, rawContent);
+    }
+    return { ok: true, moderationStatus: moderated.status };
   }
 
   async blockConversation(id: string, userId: bigint) {
@@ -183,9 +316,18 @@ export class MessagesService {
     if (!conversation) {
       throw new NotFoundException('会话不存在');
     }
-    await this.prisma.conversation.update({
-      where: { id: conversation.id },
-      data: { status: 'blocked', blockedById: userId },
+    const blockedId =
+      conversation.initiatorId === userId ? conversation.recipientId : conversation.initiatorId;
+    await this.prisma.$transaction(async (tx) => {
+      await tx.conversation.update({
+        where: { id: conversation.id },
+        data: { status: 'blocked', blockedById: userId },
+      });
+      await tx.userBlock.upsert({
+        where: { blockerId_blockedId: { blockerId: userId, blockedId } },
+        update: {},
+        create: { blockerId: userId, blockedId },
+      });
     });
     return { ok: true };
   }
@@ -204,7 +346,10 @@ export class MessagesService {
             board: { select: { name: true } },
           },
         },
-        messages: { orderBy: { createdAt: 'asc' } },
+        messages: {
+          where: { status: { not: 'deleted' } },
+          orderBy: { createdAt: 'asc' },
+        },
       },
     });
   }
@@ -214,12 +359,13 @@ export class MessagesService {
     userId: bigint,
     unreadCount: number,
   ) {
-    const partnerId =
-      conversation.initiatorId === userId ? conversation.recipientId : conversation.initiatorId;
-    const latest = conversation.messages[conversation.messages.length - 1];
+    const visibleMessages = conversation.messages.filter(
+      (message) => message.senderId === userId || message.status === 'published',
+    );
+    const latest = visibleMessages[visibleMessages.length - 1];
     return {
       id: String(conversation.id),
-      partner: this.pseudonymFor(conversation.id, partnerId),
+      partner: this.pseudonymFor(conversation.id),
       iAmInitiator: conversation.initiatorId === userId,
       status: conversation.status,
       origin: conversation.originPost
@@ -281,10 +427,10 @@ export class MessagesService {
     return this.markdown.render(md);
   }
 
-  private async assertCanWrite(userId: bigint): Promise<void> {
+  private async assertCanWrite(userId: bigint) {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
-      select: { status: true, suspendedUntil: true },
+      select: { status: true, suspendedUntil: true, createdAt: true },
     });
     if (!user || user.status === 'banned') {
       throw new BadRequestException('账号不可用');
@@ -292,16 +438,19 @@ export class MessagesService {
     if (user.status === 'suspended' && (!user.suspendedUntil || user.suspendedUntil > new Date())) {
       throw new BadRequestException('账号正在禁言中');
     }
+    return user;
   }
 
-  private pseudonymFor(conversationId: bigint, userId: bigint) {
-    const names = ['晨星', '松风', '海盐', '青柚', '山茶', '月白', '竹影', '微光'];
+  private pseudonymFor(conversationId: bigint) {
     const digest = createHmac('sha256', this.config.get('ANON_SECRET'))
-      .update(`${conversationId}:${userId}`)
-      .digest();
+      .update(`dm:${conversationId}`)
+      .digest('hex');
+    const code = digest.slice(0, 4).toUpperCase();
+    const hue = Number.parseInt(digest.slice(4, 8), 16) % 360;
     return {
-      displayName: `匿名 · ${names[digest[0] % names.length]}`,
-      color: `hsl(${digest[1] % 360} 65% 52%)`,
+      displayName: `浙小商 · 会话 ${code}`,
+      color: `hsl(${hue} 65% 52%)`,
+      conversationCode: code,
     };
   }
 

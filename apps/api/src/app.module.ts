@@ -18,6 +18,7 @@ import { BoardsModule } from './boards/boards.module';
 import { MessagesModule } from './messages/messages.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { ChatroomModule } from './chatroom/chatroom.module';
+import { AppealsModule } from './appeals/appeals.module';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 import { buildPinoConfig } from './common/logger/pino.config';
 
@@ -49,6 +50,7 @@ import { buildPinoConfig } from './common/logger/pino.config';
     MessagesModule,
     NotificationsModule,
     ChatroomModule,
+    AppealsModule,
   ],
   providers: [
     {

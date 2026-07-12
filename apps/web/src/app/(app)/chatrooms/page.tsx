@@ -1,17 +1,11 @@
 'use client';
 
 import * as React from 'react';
+import Image from 'next/image';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -31,7 +25,6 @@ import {
   MessageSquare,
   Clock,
   Users,
-  ShieldAlert,
   Trash2,
   X,
   Image as ImageIcon,
@@ -46,6 +39,7 @@ import {
 } from '@/lib/api';
 import type { ChatroomDetail, CurrentUser } from '@/types/api';
 import { toast } from 'sonner';
+import { CommunitySafetyNotice } from '@/components/community-safety-notice';
 
 export default function ChatroomsListPage() {
   const router = useRouter();
@@ -62,6 +56,7 @@ export default function ChatroomsListPage() {
   const [avatarPreview, setAvatarPreview] = React.useState<string | null>(null);
   const [bgPreview, setBgPreview] = React.useState<string | null>(null);
   const [submitting, setSubmitting] = React.useState(false);
+  const [rulesAcknowledged, setRulesAcknowledged] = React.useState(false);
 
   const fetchRoomsAndUser = React.useCallback(async () => {
     try {
@@ -110,6 +105,10 @@ export default function ChatroomsListPage() {
       toast.error('请输入聊天房主题');
       return;
     }
+    if (!rulesAcknowledged) {
+      toast.error('请先确认聊天房主题和简介遵守社区规则');
+      return;
+    }
 
     setSubmitting(true);
     try {
@@ -131,6 +130,7 @@ export default function ChatroomsListPage() {
         description: description.trim() || undefined,
         avatarUrl: avatarUrl || undefined,
         backgroundUrl: backgroundUrl || undefined,
+        rulesAcknowledged,
       });
 
       toast.success('聊天房创建成功！');
@@ -142,6 +142,7 @@ export default function ChatroomsListPage() {
       setBackgroundFile(null);
       setAvatarPreview(null);
       setBgPreview(null);
+      setRulesAcknowledged(false);
 
       // Redirect directly to the room
       router.push(`/chatrooms/${newRoom.uid}`);
@@ -195,11 +196,19 @@ export default function ChatroomsListPage() {
         <div>
           <h1 className="text-2xl font-bold tracking-tight">在线聊天房</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            匿名的实时公共聊天室。限时存在 2 小时。全平台最多可同时存在 10 个房间。
+            匿名的实时公共聊天室。房间开放 2 小时，关闭后常规记录默认留存 180
+            天。全平台最多可同时存在 10 个房间。
           </p>
         </div>
 
-        <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <Dialog
+          open={dialogOpen}
+          onOpenChange={(nextOpen) => {
+            if (!nextOpen && submitting) return;
+            setDialogOpen(nextOpen);
+            if (!nextOpen) setRulesAcknowledged(false);
+          }}
+        >
           <DialogTrigger asChild>
             <Button className="bg-orange-500 hover:bg-orange-600 text-white font-medium shadow-sm transition-transform active:scale-95">
               <Plus className="size-4 mr-2" /> 发起聊天房
@@ -209,7 +218,7 @@ export default function ChatroomsListPage() {
             <DialogHeader>
               <DialogTitle>新建在线聊天房</DialogTitle>
               <DialogDescription>
-                创建一间限时 2 小时的多人聊天室，每个人每天最多可以开启 2 个房间。
+                创建一间开放 2 小时的多人聊天室，每个人每天最多可以开启 2 个房间。
               </DialogDescription>
             </DialogHeader>
 
@@ -246,9 +255,12 @@ export default function ChatroomsListPage() {
                   <div className="flex flex-col items-center justify-center border border-dashed border-border rounded-lg p-3 hover:bg-accent/50 transition-colors relative h-28">
                     {avatarPreview ? (
                       <div className="relative size-16 group">
-                        <img
+                        <Image
                           src={avatarPreview}
-                          alt="avatar"
+                          alt="聊天房头像预览"
+                          width={64}
+                          height={64}
+                          unoptimized
                           className="size-full object-cover rounded-full"
                         />
                         <button
@@ -283,9 +295,12 @@ export default function ChatroomsListPage() {
                   <div className="flex flex-col items-center justify-center border border-dashed border-border rounded-lg p-3 hover:bg-accent/50 transition-colors relative h-28">
                     {bgPreview ? (
                       <div className="relative w-full h-16 group">
-                        <img
+                        <Image
                           src={bgPreview}
-                          alt="background"
+                          alt="聊天房背景预览"
+                          fill
+                          sizes="50vw"
+                          unoptimized
                           className="size-full object-cover rounded-md"
                         />
                         <button
@@ -315,6 +330,20 @@ export default function ChatroomsListPage() {
                 </div>
               </div>
 
+              <CommunitySafetyNotice compact privateChannel />
+
+              <label className="flex cursor-pointer items-start gap-2 rounded-md border p-3 text-xs leading-relaxed">
+                <input
+                  type="checkbox"
+                  checked={rulesAcknowledged}
+                  onChange={(event) => setRulesAcknowledged(event.target.checked)}
+                  className="mt-0.5"
+                />
+                <span>
+                  我确认房间主题、简介和后续发言均遵守社区规则，并知悉违规内容可能被拦截、处罚和依法依规溯源。
+                </span>
+              </label>
+
               <DialogFooter className="pt-2">
                 <Button
                   type="button"
@@ -327,7 +356,7 @@ export default function ChatroomsListPage() {
                 <Button
                   type="submit"
                   className="bg-orange-500 hover:bg-orange-600 text-white"
-                  disabled={submitting}
+                  disabled={submitting || !rulesAcknowledged}
                 >
                   {submitting && <Loader2 className="size-4 animate-spin mr-2" />}
                   {submitting ? '创建中...' : '提交创建'}
@@ -364,7 +393,10 @@ export default function ChatroomsListPage() {
             {activeRooms.map((room) => {
               const isOwner = currentUser && String(currentUser.id) === room.creatorId;
               const isAdmin =
-                currentUser && (currentUser.role === 'admin' || currentUser.role === 'moderator');
+                currentUser &&
+                (currentUser.role === 'superadmin' ||
+                  currentUser.role === 'admin' ||
+                  currentUser.role === 'moderator');
 
               return (
                 <Link key={room.id} href={`/chatrooms/${room.uid}`}>

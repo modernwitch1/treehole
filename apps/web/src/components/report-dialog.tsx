@@ -26,8 +26,15 @@ const CATEGORIES: Array<{ value: ReportCategory; label: string }> = [
 ];
 
 interface ReportDialogProps {
-  targetType: 'post' | 'comment' | 'user';
+  targetType:
+    | 'post'
+    | 'comment'
+    | 'user'
+    | 'conversation'
+    | 'direct_message'
+    | 'chatroom_message';
   targetId: string;
+  evidenceMessageIds?: string[];
   trigger: React.ReactNode;
   title?: string;
 }
@@ -35,6 +42,7 @@ interface ReportDialogProps {
 export function ReportDialog({
   targetType,
   targetId,
+  evidenceMessageIds,
   trigger,
   title = '举报内容',
 }: ReportDialogProps) {
@@ -46,7 +54,13 @@ export function ReportDialog({
   async function submit() {
     setSubmitting(true);
     try {
-      await reportTarget({ targetType, targetId, category, reason: reason.trim() || undefined });
+      await reportTarget({
+        targetType,
+        targetId,
+        category,
+        reason: reason.trim() || undefined,
+        evidenceMessageIds,
+      });
       toast.success('举报已提交', { description: '管理员会在后台举报队列中处理。' });
       setOpen(false);
       setReason('');

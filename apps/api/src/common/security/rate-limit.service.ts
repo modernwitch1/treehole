@@ -34,10 +34,7 @@ export class RateLimitService {
     )) as number;
 
     if (count > limit) {
-      throw new HttpException(
-        { code: 'TOO_MANY_REQUESTS', message },
-        HttpStatus.TOO_MANY_REQUESTS,
-      );
+      throw new HttpException({ code: 'TOO_MANY_REQUESTS', message }, HttpStatus.TOO_MANY_REQUESTS);
     }
   }
 }

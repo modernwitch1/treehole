@@ -2,12 +2,18 @@
  * Admin API 类型 — 与后端 `plan §2.9 /admin/*` 接口契约保持一致
  */
 
-export type UserRole = 'user' | 'moderator' | 'admin';
+export type UserRole = 'user' | 'moderator' | 'admin' | 'superadmin';
 export type UserStatus = 'active' | 'suspended' | 'banned';
 export type ContentStatus = 'published' | 'pending_review' | 'hidden' | 'deleted';
 export type ReportCategory = 'illegal' | 'porn' | 'ad' | 'harassment' | 'other';
 export type ReportStatus = 'open' | 'resolved' | 'rejected';
-export type ReportTargetType = 'post' | 'comment' | 'user';
+export type ReportTargetType =
+  | 'post'
+  | 'comment'
+  | 'user'
+  | 'conversation'
+  | 'direct_message'
+  | 'chatroom_message';
 
 export interface AdminUser {
   id: string;
@@ -31,12 +37,13 @@ export interface AdminReportTargetSnapshot {
   title?: string;
   preview: string;
   authorUsername?: string;
-  /** 是否匿名发布；真实身份只能通过审计接口按需查看 */
+  /** 是否匿名发布；真实身份仅超级管理员可调阅，且每次读取自动审计 */
   isAnonymous?: boolean;
-  realAuthorId?: string;
-  realAuthorUsername?: string;
   boardSlug?: string;
   createdAt?: string;
+  /** 举报发生时已经固化证据，后续删除原内容不会影响调查 */
+  evidencePreserved?: boolean;
+  messageCount?: number;
 }
 
 export interface AdminReport {
@@ -48,6 +55,8 @@ export interface AdminReport {
   category: ReportCategory;
   reason?: string;
   status: ReportStatus;
+  priority?: number;
+  version?: number;
   handledBy?: { id: string; username: string } | null;
   handledAt?: string | null;
   resolutionNote?: string | null;
@@ -61,7 +70,8 @@ export interface AdminPost {
   title: string;
   excerpt: string;
   authorUsername: string;
-  authorId: string;
+  /** 匿名内容的列表接口不会返回作者 ID */
+  authorId?: string;
   isAnonymous: boolean;
   status: ContentStatus;
   upvotes: number;
@@ -71,6 +81,7 @@ export interface AdminPost {
   reportCount: number;
   isPinned: boolean;
   isLocked: boolean;
+  moderationLabels?: unknown;
   createdAt: string;
 }
 
@@ -81,11 +92,13 @@ export interface AdminComment {
   boardSlug: string;
   excerpt: string;
   authorUsername: string;
-  authorId: string;
+  /** 匿名内容的列表接口不会返回作者 ID */
+  authorId?: string;
   isAnonymous: boolean;
   status: ContentStatus;
   score: number;
   reportCount: number;
+  moderationLabels?: unknown;
   createdAt: string;
 }
 
@@ -110,6 +123,11 @@ export interface AdminStats {
   newPostsToday: number;
   newCommentsToday: number;
   newReportsToday: number;
+  /** 各内容表中处于 pending_review 的总数 */
+  pendingReview: number;
+  pendingUploads: number;
+  pendingCases: number;
+  pendingAppeals: number;
   /** 30 天趋势 */
   trend: Array<{
     date: string;
@@ -118,6 +136,123 @@ export interface AdminStats {
     comments: number;
     reports: number;
   }>;
+}
+
+// ============================================================
+// Unified moderation queue / image review
+// ============================================================
+
+export type ModerationSurface =
+  | 'post'
+  | 'comment'
+  | 'direct_message'
+  | 'chatroom_message'
+  | 'upload';
+export type ModerationCaseStatus = 'pending' | 'in_review' | 'resolved' | 'dismissed';
+export type ModerationDecision = 'allow' | 'warn' | 'hide' | 'delete' | 'suspend' | 'ban';
+
+export interface AdminModerationCase {
+  id: string;
+  surface: ModerationSurface;
+  targetId: string | null;
+  status: ModerationCaseStatus;
+  riskLevel: number;
+  reasonCodes: unknown;
+  matchedRules: unknown;
+  contentExcerpt: string | null;
+  canRevealIdentity: boolean;
+  assignedTo: { id: string; username: string } | null;
+  version: number;
+  legalHold: boolean;
+  createdAt: string;
+}
+
+// ============================================================
+// Superadmin direct-message trace
+// ============================================================
+
+export interface AdminTraceIdentity {
+  /** 站内用户唯一 ID；不是匿名昵称或会话内临时标识。 */
+  uid: string;
+  username: string;
+  email: string;
+  /** 通过注册申请邮箱关联；历史或种子账号可能没有学号。 */
+  studentId: string | null;
+}
+
+export type ConversationStatus = 'pending' | 'active' | 'blocked';
+
+export interface AdminDirectMessageTrace {
+  id: string;
+  contentMd: string;
+  contentHtml: string;
+  status: ContentStatus;
+  moderationLabels: unknown;
+  senderIp: string | null;
+  senderUserAgent: string | null;
+  legalHold: boolean;
+  readAt: string | null;
+  createdAt: string;
+  sender: AdminTraceIdentity;
+  recipient: AdminTraceIdentity;
+  conversation: {
+    id: string;
+    originPostId: string | null;
+    status: ConversationStatus;
+    blockedByUserId: string | null;
+    initiator: AdminTraceIdentity;
+    recipient: AdminTraceIdentity;
+    lastMessageAt: string;
+    createdAt: string;
+    updatedAt: string;
+  };
+}
+
+export type UploadModerationStatus = 'pending' | 'flagged';
+
+export interface AdminPendingUpload {
+  id: string;
+  s3Key: string;
+  mimeType: string;
+  sizeBytes: number;
+  width: number | null;
+  height: number | null;
+  moderationStatus: UploadModerationStatus;
+  moderationLabels: unknown;
+  attachedToType: string | null;
+  attachedToId: string | null;
+  createdAt: string;
+  previewUrl: string;
+}
+
+export type AdminAppealStatus = 'pending' | 'approved' | 'rejected';
+
+export interface AdminAppeal {
+  id: string;
+  reason: string;
+  status: AdminAppealStatus;
+  reviewNote: string | null;
+  reviewedAt: string | null;
+  createdAt: string;
+  user: {
+    id: string;
+    username: string;
+    email: string;
+    status: UserStatus;
+  };
+  reviewer: { id: string; username: string } | null;
+  sanction: {
+    id: string;
+    caseId: string | null;
+    type: 'warning' | 'mute' | 'suspension' | 'ban';
+    status: 'active' | 'expired' | 'revoked';
+    scope: string;
+    policyRule: string | null;
+    reason: string;
+    startsAt: string;
+    endsAt: string | null;
+    imposedBy: { id: string; username: string } | null;
+  };
 }
 
 // ============================================================
@@ -149,7 +284,7 @@ export interface AdminCurrentUser {
   username: string;
   email: string;
   avatarUrl?: string;
-  role: 'moderator' | 'admin';
+  role: 'moderator' | 'admin' | 'superadmin';
 }
 
 export interface SystemAnnouncement {

@@ -2,7 +2,7 @@ import { Body, Controller, HttpCode, HttpStatus, Post, Req, Res } from '@nestjs/
 import type { Request, Response } from 'express';
 import { AuthService } from './auth.service';
 import { AppConfig } from '../config/app.config';
-import { USER_ACCESS_COOKIE, USER_REFRESH_COOKIE } from './session.constants';
+import { APPEAL_ACCESS_COOKIE, USER_ACCESS_COOKIE, USER_REFRESH_COOKIE } from './session.constants';
 import {
   PasswordResetConfirmDto,
   PasswordResetRequestDto,
@@ -20,17 +20,14 @@ export class AuthController {
 
   @Post('auth/register')
   @HttpCode(HttpStatus.CREATED)
-  async register(
-    @Body() body: RegisterDto,
-    @Req() req: Request,
-  ) {
-    return this.auth.register(body, req.ip);
+  async register(@Body() body: RegisterDto, @Req() req: Request) {
+    return this.auth.register(body, req.ip, req.headers['user-agent']);
   }
 
   @Post('auth/verify-email')
   @HttpCode(HttpStatus.OK)
   async verifyEmail(@Body() body: VerifyEmailDto, @Req() req: Request) {
-    return this.auth.verifyEmailCode(body.studentId, body.code, req.ip);
+    return this.auth.verifyEmailCode(body.studentId, body.code, req.ip, req.headers['user-agent']);
   }
 
   @Post('auth/check-registration')
@@ -52,8 +49,18 @@ export class AuthController {
       req.ip,
       req.headers['user-agent'],
     );
+    if (
+      result.status === 'banned' &&
+      'appealToken' in result &&
+      typeof result.appealToken === 'string'
+    ) {
+      this.clearSessionCookies(res);
+      this.setAppealCookie(res, result.appealToken);
+      return { status: result.status, message: result.message };
+    }
     if (result.status === 'approved' && 'tokens' in result && result.tokens) {
       this.setSessionCookies(res, result.tokens);
+      this.clearAppealCookie(res);
     }
     return result;
   }
@@ -75,6 +82,7 @@ export class AuthController {
   async logout(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
     await this.auth.logout(req.cookies?.[USER_REFRESH_COOKIE]);
     this.clearSessionCookies(res);
+    this.clearAppealCookie(res);
     return { ok: true };
   }
 
@@ -116,5 +124,24 @@ export class AuthController {
     const opts = { httpOnly: true, secure, sameSite: 'lax' as const, path: '/' };
     res.clearCookie(USER_ACCESS_COOKIE, opts);
     res.clearCookie(USER_REFRESH_COOKIE, opts);
+  }
+
+  private setAppealCookie(res: Response, token: string) {
+    res.cookie(APPEAL_ACCESS_COOKIE, token, {
+      httpOnly: true,
+      secure: this.config.isProduction,
+      sameSite: 'lax',
+      path: '/api/v1/appeals',
+      maxAge: 30 * 60 * 1000,
+    });
+  }
+
+  private clearAppealCookie(res: Response) {
+    res.clearCookie(APPEAL_ACCESS_COOKIE, {
+      httpOnly: true,
+      secure: this.config.isProduction,
+      sameSite: 'lax',
+      path: '/api/v1/appeals',
+    });
   }
 }

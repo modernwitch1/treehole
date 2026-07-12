@@ -2,7 +2,7 @@
 
 import * as React from 'react';
 import Link from 'next/link';
-import Image from 'next/image';
+import { BrandMark } from '@/components/brand-mark';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -34,14 +34,7 @@ export default function ForgotPasswordPage() {
     return (
       <Card className="border-border/60 shadow-card">
         <CardHeader className="space-y-2 text-center">
-          <Image
-            src="/logo.webp"
-            alt="浙工商树洞"
-            width={48}
-            height={48}
-            priority
-            className="mx-auto size-12 select-none lg:hidden"
-          />
+        <BrandMark className="mx-auto size-12 lg:hidden" />
           <div className="mx-auto flex size-12 items-center justify-center rounded-full bg-green-500/10">
             <CheckCircle2 className="size-6 text-green-500" />
           </div>
@@ -73,14 +66,7 @@ export default function ForgotPasswordPage() {
   return (
     <Card className="border-border/60 shadow-card">
       <CardHeader className="space-y-2 text-center">
-        <Image
-          src="/logo.webp"
-          alt="浙工商树洞"
-          width={48}
-          height={48}
-          priority
-          className="mx-auto size-12 select-none lg:hidden"
-        />
+        <BrandMark className="mx-auto size-12 lg:hidden" />
         <div className="mx-auto flex size-12 items-center justify-center rounded-full bg-muted">
           <Mail className="size-6 text-muted-foreground" />
         </div>

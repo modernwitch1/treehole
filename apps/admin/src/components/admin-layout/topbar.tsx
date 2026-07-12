@@ -35,6 +35,17 @@ const PAGE_TITLES: Record<string, string> = {
   '/audit-logs': '审计日志',
   '/sensitive-words': '敏感词库',
   '/settings': '通知与设置',
+  '/moderation': '统一审核案件',
+  '/uploads': '图片待审',
+  '/appeals': '处罚申诉',
+  '/boards': '板块申请',
+  '/trace': '私信溯源中心',
+};
+
+const ROLE_LABEL: Record<AdminCurrentUser['role'], string> = {
+  superadmin: '超级管理员',
+  admin: '管理员',
+  moderator: '版主',
 };
 
 function resolveTitle(pathname: string): string {
@@ -65,7 +76,7 @@ export function AdminTopbar({ user, title, onLogout }: TopbarProps) {
 
       <div className="ml-auto flex items-center gap-1 md:ml-0">
         <Badge variant="warning" className="hidden sm:inline-flex">
-          {user.role === 'admin' ? '管理员' : '版主'}
+          {ROLE_LABEL[user.role]}
         </Badge>
         <ThemeToggle />
         <DropdownMenu>

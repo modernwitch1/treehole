@@ -1,4 +1,3 @@
-import Image from 'next/image';
 import { ShieldCheck, Sparkles, MessageSquareHeart, Compass } from 'lucide-react';
 
 const HIGHLIGHTS = [
@@ -20,7 +19,7 @@ const HIGHLIGHTS = [
   {
     icon: Sparkles,
     title: '在线聊天房',
-    desc: '临时匿名群聊，72h 后自动清理不留痕',
+    desc: '房间开放 2 小时，常规记录默认留存 180 天',
   },
 ];
 
@@ -28,24 +27,14 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
   return (
     <div className="app-shell flex min-h-screen flex-col bg-background">
       <main className="flex flex-1 items-stretch">
-        <div className="relative hidden w-[52%] shrink-0 overflow-hidden lg:block">
-          <Image
-            src="/浙工商校门.webp"
-            alt="浙江工商大学校门"
-            fill
-            priority
-            sizes="50vw"
-            className="object-cover"
-          />
-          {/* 渐变遮罩 — 校园蓝调，与主题统一 */}
-          <div className="absolute inset-0 bg-gradient-to-br from-primary/85 via-primary/70 to-blue-900/85" />
+        <div className="relative hidden w-[52%] shrink-0 overflow-hidden bg-gradient-to-br from-primary via-orange-600 to-slate-950 lg:block">
+          <div className="absolute inset-0 bg-gradient-to-br from-black/5 via-transparent to-black/25" />
           {/* 细网格点缀 — 纯 CSS 不增加资源 */}
           <div
             aria-hidden="true"
             className="absolute inset-0 opacity-[0.08] mix-blend-overlay"
             style={{
-              backgroundImage:
-                'radial-gradient(circle at 1px 1px, white 1px, transparent 0)',
+              backgroundImage: 'radial-gradient(circle at 1px 1px, white 1px, transparent 0)',
               backgroundSize: '24px 24px',
             }}
           />
@@ -79,9 +68,7 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
               ))}
             </ul>
 
-            <p className="text-xs text-white/60">
-              © 2026 浙工商树洞 · 学生自发运营 · 非官方平台
-            </p>
+            <p className="text-xs text-white/60">© 2026 浙工商树洞 · 学生自发运营 · 非官方平台</p>
           </div>
         </div>
 

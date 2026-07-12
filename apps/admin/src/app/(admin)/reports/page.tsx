@@ -4,9 +4,11 @@ import * as React from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { Flag } from 'lucide-react';
+import { toast } from 'sonner';
 import { Card, CardContent } from '@/components/ui/card';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ReportCard } from '@/components/report-card';
+import { Pagination } from '@/components/pagination';
 import { listReports } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import type { AdminReport, ReportCategory, ReportStatus } from '@/types/admin';
@@ -34,21 +36,41 @@ export default function ReportsPage() {
   const [items, setItems] = React.useState<AdminReport[]>([]);
   const [counts, setCounts] = React.useState({ open: 0, resolved: 0, rejected: 0 });
   const [loading, setLoading] = React.useState(true);
+  const [page, setPage] = React.useState(1);
+  const [total, setTotal] = React.useState(0);
+  const [totalPages, setTotalPages] = React.useState(0);
+  const requestSequence = React.useRef(0);
 
   const reload = React.useCallback(() => {
+    const sequence = ++requestSequence.current;
     setLoading(true);
     Promise.all([
-      listReports({ status, pageSize: 200 }),
-      listReports({ status: 'open', pageSize: 200 }),
-      listReports({ status: 'resolved', pageSize: 200 }),
-      listReports({ status: 'rejected', pageSize: 200 }),
+      listReports({ status, page, pageSize: 20 }),
+      listReports({ status: 'open', pageSize: 1 }),
+      listReports({ status: 'resolved', pageSize: 1 }),
+      listReports({ status: 'rejected', pageSize: 1 }),
     ])
       .then(([cur, op, re, rj]) => {
+        if (sequence !== requestSequence.current) return;
         setItems(cur.items);
+        setTotal(cur.total);
+        setTotalPages(cur.totalPages);
         setCounts({ open: op.total, resolved: re.total, rejected: rj.total });
+        if (cur.items.length === 0 && page > 1) setPage(page - 1);
       })
-      .finally(() => setLoading(false));
-  }, [status]);
+      .catch((error: unknown) => {
+        if (sequence === requestSequence.current) {
+          toast.error((error as Error).message || '举报列表加载失败');
+        }
+      })
+      .finally(() => {
+        if (sequence === requestSequence.current) setLoading(false);
+      });
+  }, [page, status]);
+
+  React.useEffect(() => {
+    setPage(1);
+  }, [categoryParam, status]);
 
   React.useEffect(() => {
     reload();
@@ -70,7 +92,7 @@ export default function ReportsPage() {
       <header>
         <h1 className="text-2xl font-bold tracking-tight">举报队列</h1>
         <p className="text-sm text-muted-foreground">
-          所有处理动作会写入审计日志 · 重复无效举报会降低举报人权重
+          所有处理动作会写入审计日志 · 举报时证据快照可防止删改逃避调查
         </p>
       </header>
 
@@ -92,16 +114,15 @@ export default function ReportsPage() {
       {/* 分类筛选 chip 行 — 仅在有数据时显示 */}
       {items.length > 0 && (
         <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs text-muted-foreground">本页分类：</span>
           {CATEGORIES.map((c) => {
             const active = categoryParam === c.value;
-            const count = c.value === 'all' ? items.length : categoryCounts[c.value] ?? 0;
+            const count = c.value === 'all' ? items.length : (categoryCounts[c.value] ?? 0);
             return (
               <Link
                 key={c.value}
                 href={
-                  c.value === 'all'
-                    ? `?status=${status}`
-                    : `?status=${status}&category=${c.value}`
+                  c.value === 'all' ? `?status=${status}` : `?status=${status}&category=${c.value}`
                 }
                 replace
                 className={cn(
@@ -139,10 +160,10 @@ export default function ReportsPage() {
           <Card>
             <CardContent className="flex flex-col items-center gap-2 py-12 text-center text-sm text-muted-foreground">
               <Flag className="size-8 text-muted-foreground/30" />
-              {status === 'open'
-                ? '无待处理举报 🎉'
-                : categoryParam !== 'all'
-                  ? '该分类暂无记录'
+              {categoryParam !== 'all'
+                ? '本页没有该分类，其他页面可能仍有记录'
+                : status === 'open'
+                  ? '无待处理举报 🎉'
                   : '此分类暂无记录'}
             </CardContent>
           </Card>
@@ -150,6 +171,13 @@ export default function ReportsPage() {
           filteredItems.map((r) => <ReportCard key={r.id} report={r} onChanged={reload} />)
         )}
       </div>
+
+      {totalPages > 1 && (
+        <div className="space-y-2">
+          <Pagination page={page} totalPages={totalPages} onPageChange={setPage} />
+          <p className="text-center text-xs text-muted-foreground">共 {total} 条举报记录</p>
+        </div>
+      )}
     </div>
   );
 }

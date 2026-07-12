@@ -15,7 +15,8 @@ const STATUS_META: Record<
   { label: string; icon: React.ComponentType<{ className?: string }>; className: string }
 > = {
   pending: {
-    label: '待回复',
+    // 首条私信可能尚在审核，不在收件箱把它误报为已投递后“待回复”。
+    label: '待处理',
     icon: Hourglass,
     className: 'text-[color:var(--upvote)] bg-[color:var(--upvote)]/10',
   },
@@ -71,7 +72,7 @@ export default async function MessagesInboxPage() {
                     style={{ background: c.partner.color }}
                     aria-hidden
                   >
-                    匿
+                    {c.partner.conversationCode.slice(0, 1)}
                   </div>
 
                   {/* Main */}
@@ -91,8 +92,8 @@ export default async function MessagesInboxPage() {
 
                     {c.origin && (
                       <p className="mt-0.5 truncate text-xs text-muted-foreground">
-                        关于: <span className="text-foreground/80">{c.origin.postTitle}</span>{' '}
-                        <span>· {c.origin.tag ? `#${c.origin.tag}` : ''}</span>
+                        来源帖子: <span className="font-medium text-foreground/80">{c.origin.postTitle}</span>{' '}
+                        <span>· {c.origin.tag ?? '主题频道'}</span>
                       </p>
                     )}
 
@@ -130,7 +131,11 @@ export default async function MessagesInboxPage() {
           <Separator />
           <p>
             <strong className="text-foreground">全员匿名</strong>:
-            论坛里所有帖子和评论都不显示真实身份。每段私信也用临时昵称,你和对方在这段对话之外彼此不可识别。
+            论坛里所有帖子和评论都不显示真实身份。每段私信使用独立的“会话编号”，并始终显示来源帖子，方便你区分不同对话。
+          </p>
+          <p>
+            <strong className="text-foreground">会话隔离</strong>:
+            同一个人通过不同帖子与你建立的私信，也会显示不同会话编号，避免跨帖子关联身份。
           </p>
           <p>
             <strong className="text-foreground">配对式开锁</strong>: 如果你向陌生人发起,

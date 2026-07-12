@@ -16,6 +16,7 @@ import {
 import { initiateConversation } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
+import { CommunitySafetyNotice } from '@/components/community-safety-notice';
 
 interface DmButtonProps {
   /** 起源帖子 id (后端用这个解析接收方) */
@@ -35,6 +36,7 @@ export function DmButton({
 }: DmButtonProps) {
   const [open, setOpen] = React.useState(false);
   const [content, setContent] = React.useState('');
+  const [rulesAcknowledged, setRulesAcknowledged] = React.useState(false);
   const [submitting, setSubmitting] = React.useState(false);
   const router = useRouter();
   const ref = React.useRef<HTMLTextAreaElement>(null);
@@ -48,12 +50,13 @@ export function DmButton({
   }, [open]);
 
   async function handleSubmit() {
-    if (!content.trim()) return;
+    if (!content.trim() || !rulesAcknowledged) return;
     setSubmitting(true);
     try {
       const res = await initiateConversation({
         originPostId,
         initialMessage: content.trim(),
+        rulesAcknowledged,
       });
       if (!res.ok) {
         if (res.error === 'partner_dm_disabled') {
@@ -65,12 +68,21 @@ export function DmButton({
         }
         return;
       }
-      toast.success('已发送 — 等待对方回复', {
-        description: '在对方回复前,你只能发送这一条消息。',
-      });
+      if (res.moderationStatus === 'pending_review') {
+        toast.info('消息已提交审核', {
+          description: '审核通过前仅你自己可见，不会投递给对方。',
+        });
+      } else {
+        toast.success('已发送 — 等待对方回复', {
+          description: '在对方回复前，你只能发送这一条消息。',
+        });
+      }
       setOpen(false);
       setContent('');
+      setRulesAcknowledged(false);
       if (res.conversationId) router.push(`/messages/${res.conversationId}`);
+    } catch (error) {
+      toast.error((error as Error).message || '私信发送失败，请修改后重试');
     } finally {
       setSubmitting(false);
     }
@@ -78,10 +90,16 @@ export function DmButton({
 
   const len = content.trim().length;
   const max = 500;
-  const valid = len > 0 && len <= max;
+  const valid = len > 0 && len <= max && rulesAcknowledged;
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog
+      open={open}
+      onOpenChange={(nextOpen) => {
+        setOpen(nextOpen);
+        if (!nextOpen && !submitting) setRulesAcknowledged(false);
+      }}
+    >
       <DialogTrigger asChild>
         {variant === 'compact' ? (
           <Button
@@ -135,6 +153,20 @@ export function DmButton({
             <p>如果对方拒绝或不回复,该会话不会再继续。</p>
           </div>
         </div>
+
+        <CommunitySafetyNotice compact privateChannel />
+
+        <label className="flex cursor-pointer items-start gap-2 rounded-md border p-3 text-xs leading-relaxed">
+          <input
+            type="checkbox"
+            checked={rulesAcknowledged}
+            onChange={(event) => setRulesAcknowledged(event.target.checked)}
+            className="mt-0.5"
+          />
+          <span>
+            我确认本条私信不含违法低俗、诈骗广告、攻击骚扰或隐私泄露内容，并知悉违规内容可能被拦截、处罚和依法依规溯源。
+          </span>
+        </label>
 
         <DialogFooter>
           <Button variant="ghost" onClick={() => setOpen(false)} disabled={submitting}>

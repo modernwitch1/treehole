@@ -4,7 +4,6 @@ const ADMIN_COOKIE = 'admin_access_token';
 
 export function middleware(request: NextRequest) {
   const token = request.cookies.get(ADMIN_COOKIE)?.value;
-  const { pathname } = request.nextUrl;
 
   // If no token, let the client-side layout handle the login form
   // (we don't redirect because the layout renders an inline login form)

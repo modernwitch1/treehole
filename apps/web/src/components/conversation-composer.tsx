@@ -7,15 +7,17 @@ import { Button } from '@/components/ui/button';
 import { sendMessage } from '@/lib/api';
 import { toast } from 'sonner';
 import type { ConversationDetail } from '@/types/api';
+import { CommunitySafetyNotice } from '@/components/community-safety-notice';
 
 interface ConversationComposerProps {
   detail: ConversationDetail;
   /** 发送成功后的回调，用于乐观更新消息列表 */
-  onSent?: (text: string) => void;
+  onSent?: (text: string, moderationStatus: 'published' | 'pending_review') => void;
 }
 
 export function ConversationComposer({ detail, onSent }: ConversationComposerProps) {
   const [value, setValue] = React.useState('');
+  const [rulesAcknowledged, setRulesAcknowledged] = React.useState(false);
   const [submitting, setSubmitting] = React.useState(false);
   const router = useRouter();
   const ref = React.useRef<HTMLTextAreaElement>(null);
@@ -28,11 +30,18 @@ export function ConversationComposer({ detail, onSent }: ConversationComposerPro
   }
 
   if (c.status === 'pending' && c.iAmInitiator && !canSendMore) {
+    const initialMessagePending = detail.messages.some(
+      (message) => message.sender === 'me' && message.status === 'pending_review',
+    );
     return (
       <div className="rounded-lg border border-dashed bg-muted/40 p-4 text-center text-sm">
-        <p className="font-medium">等待对方回复</p>
+        <p className="font-medium">
+          {initialMessagePending ? '消息正在审核' : '等待对方回复'}
+        </p>
         <p className="mt-1 text-xs text-muted-foreground">
-          在对方回复前,你只能发这一条消息。如果对方一直不回,这段对话不会再继续。
+          {initialMessagePending
+            ? '审核通过前消息仅你自己可见，不会投递给对方。'
+            : '在对方回复前，你只能发这一条消息。如果对方一直不回，这段对话不会再继续。'}
         </p>
       </div>
     );
@@ -48,20 +57,29 @@ export function ConversationComposer({ detail, onSent }: ConversationComposerPro
   async function handleSubmit(e?: React.FormEvent) {
     e?.preventDefault();
     const text = value.trim();
-    if (!text || submitting) return;
+    if (!text || !rulesAcknowledged || submitting) return;
     setSubmitting(true);
     try {
-      const res = await sendMessage(c.id, text);
+      const res = await sendMessage(c.id, text, rulesAcknowledged);
       if (!res.ok) {
         toast.error(res.message ?? '发送失败');
         return;
       }
       setValue('');
+      setRulesAcknowledged(false);
+      const moderationStatus = res.moderationStatus ?? 'published';
+      if (moderationStatus === 'pending_review') {
+        toast.info('消息已提交审核', {
+          description: '审核通过前仅你自己可见，不会投递给对方。',
+        });
+      }
       if (onSent) {
-        onSent(text);
+        onSent(text, moderationStatus);
       } else {
         router.refresh();
       }
+    } catch (error) {
+      toast.error((error as Error).message || '私信发送失败，请修改后重试');
     } finally {
       setSubmitting(false);
     }
@@ -77,6 +95,8 @@ export function ConversationComposer({ detail, onSent }: ConversationComposerPro
           </p>
         </div>
       )}
+
+      <CommunitySafetyNotice compact privateChannel />
 
       <div className="flex items-end gap-2 rounded-lg border bg-card p-2 focus-within:ring-1 focus-within:ring-ring">
         <textarea
@@ -99,13 +119,22 @@ export function ConversationComposer({ detail, onSent }: ConversationComposerPro
         <Button
           type="submit"
           size="icon"
-          disabled={!value.trim() || submitting}
+          disabled={!value.trim() || !rulesAcknowledged || submitting}
           aria-label="发送 (Ctrl+Enter)"
           className="size-9 shrink-0 rounded-md"
         >
           {submitting ? <Loader2 className="size-4 animate-spin" /> : <Send className="size-4" />}
         </Button>
       </div>
+      <label className="flex cursor-pointer items-start gap-2 px-1 text-[11px] leading-relaxed text-muted-foreground">
+        <input
+          type="checkbox"
+          checked={rulesAcknowledged}
+          onChange={(event) => setRulesAcknowledged(event.target.checked)}
+          className="mt-0.5"
+        />
+        <span>我确认本条私信遵守社区规则；违规私信可能被拦截、处罚并依法依规溯源。</span>
+      </label>
       <p className="px-1 text-[11px] text-muted-foreground">⌘/Ctrl + Enter 快速发送</p>
     </form>
   );

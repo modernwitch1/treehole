@@ -43,7 +43,7 @@ export function ConversationHeader({ conversation: c }: ConversationHeaderProps)
         style={{ background: c.partner.color }}
         aria-hidden
       >
-        匿
+        {c.partner.conversationCode.slice(0, 1)}
       </div>
 
       <div className="min-w-0 flex-1">
@@ -54,7 +54,7 @@ export function ConversationHeader({ conversation: c }: ConversationHeaderProps)
             className="mt-0.5 inline-flex items-center gap-1 truncate text-xs text-muted-foreground hover:underline"
           >
             <Hash className="size-3 shrink-0" />
-            <span className="truncate">关于: {c.origin.postTitle}</span>
+            <span className="truncate">来源帖子: {c.origin.postTitle} · {c.origin.tag}</span>
           </Link>
         )}
       </div>
@@ -66,22 +66,16 @@ export function ConversationHeader({ conversation: c }: ConversationHeaderProps)
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
-          {c.origin ? (
-            <ReportDialog
-              targetType="post"
-              targetId={c.origin.postId}
-              title="举报私信"
-              trigger={
-                <DropdownMenuItem onSelect={(e) => e.preventDefault()}>
-                  <Flag /> 举报对方
-                </DropdownMenuItem>
-              }
-            />
-          ) : (
-            <DropdownMenuItem disabled>
-              <Flag /> 举报对方
-            </DropdownMenuItem>
-          )}
+          <ReportDialog
+            targetType="conversation"
+            targetId={c.id}
+            title="举报本次私信会话"
+            trigger={
+              <DropdownMenuItem onSelect={(e) => e.preventDefault()}>
+                <Flag /> 举报会话
+              </DropdownMenuItem>
+            }
+          />
           <DropdownMenuItem onClick={onBlock} className="text-destructive focus:text-destructive">
             <ShieldX /> 拉黑会话
           </DropdownMenuItem>

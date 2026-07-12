@@ -10,6 +10,7 @@ import { json, urlencoded, type NextFunction, type Request, type Response } from
 import { AppModule } from './app.module';
 import { AppConfig } from './config/app.config';
 import {
+  APPEAL_ACCESS_COOKIE,
   ADMIN_ACCESS_COOKIE,
   USER_ACCESS_COOKIE,
   USER_REFRESH_COOKIE,
@@ -67,8 +68,9 @@ async function bootstrap(): Promise<void> {
     const origin = req.headers.origin;
     const usesAuthCookie = Boolean(
       req.cookies?.[USER_ACCESS_COOKIE] ||
-        req.cookies?.[USER_REFRESH_COOKIE] ||
-        req.cookies?.[ADMIN_ACCESS_COOKIE],
+      req.cookies?.[USER_REFRESH_COOKIE] ||
+      req.cookies?.[APPEAL_ACCESS_COOKIE] ||
+      req.cookies?.[ADMIN_ACCESS_COOKIE],
     );
     if ((!origin && !usesAuthCookie) || (origin && corsOrigins.includes(origin))) {
       next();

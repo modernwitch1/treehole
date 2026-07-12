@@ -13,13 +13,18 @@ import {
   Filter,
   Megaphone,
   Clock,
+  Images,
+  ShieldAlert,
+  Scale,
+  FolderPlus,
+  Fingerprint,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { StatCard } from '@/components/stat-card';
 import { TrendChart } from '@/components/trend-chart';
-import { getStats, listReports, listAuditLogs } from '@/lib/api';
+import { getCurrentAdmin, getStats, listReports, listAuditLogs } from '@/lib/api';
 import { relativeTime } from '@/lib/format';
 import type { AdminAuditLog, AdminReport, AdminStats } from '@/types/admin';
 
@@ -31,6 +36,15 @@ const CATEGORY_LABEL: Record<string, string> = {
   other: '其他',
 };
 
+const REPORT_TARGET_LABEL: Record<string, string> = {
+  post: '帖子',
+  comment: '评论',
+  user: '用户',
+  conversation: '私信会话',
+  direct_message: '私信消息',
+  chatroom_message: '聊天房消息',
+};
+
 const ACTION_LABEL: Record<string, string> = {
   'post.hide': '隐藏帖子',
   'post.pin': '置顶帖子',
@@ -39,6 +53,12 @@ const ACTION_LABEL: Record<string, string> = {
   'post.delete': '删除帖子',
   'comment.hide': '隐藏评论',
   'comment.delete': '删除评论',
+  'content.batch.approve': '批量通过内容',
+  'content.batch.hide': '批量隐藏内容',
+  'moderation-case.claim': '认领审核案件',
+  'moderation-case.decide': '处置审核案件',
+  'upload.approve': '通过图片审核',
+  'upload.reject': '驳回图片',
   'user.suspend': '禁言用户',
   'user.ban': '封禁用户',
   'user.unban': '解封用户',
@@ -59,15 +79,35 @@ export default function DashboardPage() {
   const [openReports, setOpenReports] = React.useState<AdminReport[]>([]);
   const [recentLogs, setRecentLogs] = React.useState<AdminAuditLog[]>([]);
   const [loading, setLoading] = React.useState(true);
+  const [canReviewAppeals, setCanReviewAppeals] = React.useState(false);
+  const [isSuperadmin, setIsSuperadmin] = React.useState(false);
   const pathname = usePathname();
 
   React.useEffect(() => {
     setLoading(true);
-    Promise.all([getStats(), listReports({ status: 'open', pageSize: 200 }), listAuditLogs({ pageSize: 200 })])
-      .then(([s, r, l]) => {
+    const adminRequest = getCurrentAdmin();
+    Promise.all([
+      getStats(),
+      listReports({ status: 'open', pageSize: 100 }),
+      adminRequest.then((admin) =>
+        admin?.role === 'superadmin'
+          ? listAuditLogs({ pageSize: 100 }).catch(() => ({
+              items: [],
+              total: 0,
+              page: 1,
+              pageSize: 100,
+              totalPages: 0,
+            }))
+          : Promise.resolve({ items: [] as AdminAuditLog[] }),
+      ),
+      adminRequest,
+    ])
+      .then(([s, r, l, admin]) => {
         setStats(s);
         setOpenReports(r.items);
         setRecentLogs(l.items);
+        setCanReviewAppeals(admin?.role === 'superadmin');
+        setIsSuperadmin(admin?.role === 'superadmin');
       })
       .finally(() => setLoading(false));
   }, [pathname]);
@@ -78,7 +118,13 @@ export default function DashboardPage() {
 
   const pendingRegs = stats.pendingRegistrations;
   const openRpts = stats.openReports;
-  const hasWork = pendingRegs > 0 || openRpts > 0;
+  const hasWork =
+    (isSuperadmin && pendingRegs > 0) ||
+    openRpts > 0 ||
+    stats.pendingReview > 0 ||
+    stats.pendingUploads > 0 ||
+    stats.pendingCases > 0 ||
+    (canReviewAppeals && stats.pendingAppeals > 0);
 
   return (
     <div className="space-y-6">
@@ -88,12 +134,10 @@ export default function DashboardPage() {
           <h1 className="text-2xl font-bold tracking-tight">
             {hasWork ? '今天还有待处理的工作' : '一切就绪，无待处理事项 🎉'}
           </h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            浙工商树洞运营总览 · 数据每分钟刷新
-          </p>
+          <p className="mt-1 text-sm text-muted-foreground">浙工商树洞运营总览 · 数据每分钟刷新</p>
         </div>
         <div className="flex flex-wrap gap-2">
-          {pendingRegs > 0 && (
+          {isSuperadmin && pendingRegs > 0 && (
             <Button asChild size="sm" variant="outline" className="gap-1.5">
               <Link href="/registrations">
                 <UserPlus className="size-4" />
@@ -107,6 +151,33 @@ export default function DashboardPage() {
               <Link href="/reports">
                 <Flag className="size-4" />
                 {openRpts} 个举报待处理
+                <ArrowRight className="size-3.5" />
+              </Link>
+            </Button>
+          )}
+          {stats.pendingCases > 0 && (
+            <Button asChild size="sm" variant="outline" className="gap-1.5">
+              <Link href="/moderation">
+                <ShieldAlert className="size-4" />
+                {stats.pendingCases} 个审核案件
+                <ArrowRight className="size-3.5" />
+              </Link>
+            </Button>
+          )}
+          {stats.pendingUploads > 0 && (
+            <Button asChild size="sm" variant="outline" className="gap-1.5">
+              <Link href="/uploads">
+                <Images className="size-4" />
+                {stats.pendingUploads} 张图片待审
+                <ArrowRight className="size-3.5" />
+              </Link>
+            </Button>
+          )}
+          {canReviewAppeals && stats.pendingAppeals > 0 && (
+            <Button asChild size="sm" variant="outline" className="gap-1.5">
+              <Link href="/appeals">
+                <Scale className="size-4" />
+                {stats.pendingAppeals} 条申诉待复核
                 <ArrowRight className="size-3.5" />
               </Link>
             </Button>
@@ -146,16 +217,92 @@ export default function DashboardPage() {
         />
       </div>
 
+      <div>
+        <div className="mb-3">
+          <h2 className="text-sm font-semibold text-muted-foreground">社区治理待办</h2>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            待审内容包含帖子、评论、私信和聊天消息；案件、图片与申诉分别独立统计
+          </p>
+        </div>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <StatCard
+            label="待审内容"
+            value={stats.pendingReview}
+            tone="warning"
+            icon={<ShieldAlert className="size-5" />}
+          />
+          <StatCard
+            label="未结审核案件"
+            value={stats.pendingCases}
+            tone="destructive"
+            icon={<Scale className="size-5" />}
+          />
+          <StatCard
+            label="待审图片"
+            value={stats.pendingUploads}
+            tone="warning"
+            icon={<Images className="size-5" />}
+          />
+          {isSuperadmin && (
+            <StatCard
+              label="待处理申诉"
+              value={stats.pendingAppeals}
+              tone="default"
+              icon={<MessageSquare className="size-5" />}
+            />
+          )}
+        </div>
+      </div>
+
       {/* 快捷操作 */}
       <div>
         <h2 className="mb-3 text-sm font-semibold text-muted-foreground">快捷操作</h2>
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-          <QuickAction href="/registrations" icon={UserPlus} label="注册审批" badge={pendingRegs} />
-          <QuickAction href="/reports" icon={Flag} label="处理举报" badge={openRpts} tone="destructive" />
-          <QuickAction href="/content" icon={FileText} label="内容管理" />
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-8">
+          {isSuperadmin && (
+            <QuickAction href="/registrations" icon={UserPlus} label="注册审批" badge={pendingRegs} />
+          )}
+          <QuickAction
+            href="/reports"
+            icon={Flag}
+            label="处理举报"
+            badge={openRpts}
+            tone="destructive"
+          />
+          <QuickAction
+            href="/moderation"
+            icon={ShieldAlert}
+            label="审核案件"
+            badge={stats.pendingCases}
+            tone="destructive"
+          />
+          <QuickAction
+            href="/uploads"
+            icon={Images}
+            label="图片待审"
+            badge={stats.pendingUploads}
+          />
+          {canReviewAppeals && (
+            <QuickAction
+              href="/appeals"
+              icon={Scale}
+              label="处罚申诉"
+              badge={stats.pendingAppeals}
+            />
+          )}
+          <QuickAction href="/content" icon={FileText} label="帖子与评论" />
           <QuickAction href="/chatrooms" icon={MessageSquare} label="聊天房监控" />
-          <QuickAction href="/sensitive-words" icon={Filter} label="敏感词库" />
-          <QuickAction href="/settings" icon={Megaphone} label="发全站通知" />
+          {isSuperadmin && (
+            <QuickAction href="/sensitive-words" icon={Filter} label="敏感词库" />
+          )}
+          {isSuperadmin && (
+            <QuickAction href="/boards" icon={FolderPlus} label="板块申请" />
+          )}
+          {isSuperadmin && (
+            <QuickAction href="/trace" icon={Fingerprint} label="私信溯源" />
+          )}
+          {isSuperadmin && (
+            <QuickAction href="/settings" icon={Megaphone} label="发全站通知" />
+          )}
         </div>
       </div>
 
@@ -202,8 +349,8 @@ export default function DashboardPage() {
                     {r.targetSnapshot.title ?? r.targetSnapshot.preview}
                   </p>
                   <p className="mt-0.5 text-xs text-muted-foreground">
-                    {r.targetType === 'user' ? '针对用户' : '帖子/评论'} · {r.reporter.username}{' '}
-                    举报 · {relativeTime(r.createdAt)}
+                    {REPORT_TARGET_LABEL[r.targetType] ?? r.targetType} · {r.reporter.username} 举报
+                    · {relativeTime(r.createdAt)}
                   </p>
                 </div>
               </Link>
@@ -214,47 +361,49 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
 
-        {/* Recent admin actions */}
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-3">
-            <div>
-              <CardTitle className="text-base">最近管理动作</CardTitle>
-              <CardDescription>来自审计日志</CardDescription>
-            </div>
-            <Button asChild variant="ghost" size="sm">
-              <Link href="/audit-logs">
-                全部 <ArrowRight className="size-3.5" />
-              </Link>
-            </Button>
-          </CardHeader>
-          <CardContent className="space-y-3 pt-0">
-            {recentLogs.slice(0, 6).map((log) => (
-              <div key={log.id} className="flex gap-3 text-sm">
-                <div className="mt-1 size-1.5 shrink-0 rounded-full bg-primary" />
-                <div className="min-w-0 flex-1">
-                  <p>
-                    <span className="font-medium">{log.actor.username}</span>{' '}
-                    <span className="text-muted-foreground">
-                      {ACTION_LABEL[log.action] ?? log.action}
-                    </span>
-                    {log.targetType && log.targetId && (
-                      <span className="ml-1 font-mono text-xs text-muted-foreground">
-                        #{log.targetId}
-                      </span>
-                    )}
-                  </p>
-                  <p className="mt-0.5 flex items-center gap-1 text-xs text-muted-foreground">
-                    <Clock className="size-3" />
-                    {relativeTime(log.createdAt)}
-                  </p>
-                </div>
+        {/* Recent admin actions — audit data is superadmin-only */}
+        {isSuperadmin && (
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between pb-3">
+              <div>
+                <CardTitle className="text-base">最近管理动作</CardTitle>
+                <CardDescription>来自审计日志</CardDescription>
               </div>
-            ))}
-            {recentLogs.length === 0 && (
-              <p className="py-6 text-center text-sm text-muted-foreground">暂无管理动作</p>
-            )}
-          </CardContent>
-        </Card>
+              <Button asChild variant="ghost" size="sm">
+                <Link href="/audit-logs">
+                  全部 <ArrowRight className="size-3.5" />
+                </Link>
+              </Button>
+            </CardHeader>
+            <CardContent className="space-y-3 pt-0">
+              {recentLogs.slice(0, 6).map((log) => (
+                <div key={log.id} className="flex gap-3 text-sm">
+                  <div className="mt-1 size-1.5 shrink-0 rounded-full bg-primary" />
+                  <div className="min-w-0 flex-1">
+                    <p>
+                      <span className="font-medium">{log.actor.username}</span>{' '}
+                      <span className="text-muted-foreground">
+                        {ACTION_LABEL[log.action] ?? log.action}
+                      </span>
+                      {log.targetType && log.targetId && (
+                        <span className="ml-1 font-mono text-xs text-muted-foreground">
+                          #{log.targetId}
+                        </span>
+                      )}
+                    </p>
+                    <p className="mt-0.5 flex items-center gap-1 text-xs text-muted-foreground">
+                      <Clock className="size-3" />
+                      {relativeTime(log.createdAt)}
+                    </p>
+                  </div>
+                </div>
+              ))}
+              {recentLogs.length === 0 && (
+                <p className="py-6 text-center text-sm text-muted-foreground">暂无管理动作</p>
+              )}
+            </CardContent>
+          </Card>
+        )}
       </div>
     </div>
   );
@@ -289,7 +438,10 @@ function QuickAction({
           <Icon className="size-4.5" />
         </div>
         {badge !== undefined && badge > 0 && (
-          <Badge variant={tone === 'destructive' ? 'destructive' : 'default'} className="h-5 px-1.5">
+          <Badge
+            variant={tone === 'destructive' ? 'destructive' : 'default'}
+            className="h-5 px-1.5"
+          >
             {badge > 99 ? '99+' : badge}
           </Badge>
         )}

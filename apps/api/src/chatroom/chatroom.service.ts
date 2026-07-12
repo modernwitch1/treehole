@@ -10,8 +10,11 @@ import {
 import { PrismaService } from '../prisma/prisma.module';
 import { AppConfig } from '../config/app.config';
 import { ModerationService } from '../common/moderation.service';
-import { createHmac, randomBytes } from 'crypto';
+import { createHash, createHmac, randomBytes } from 'crypto';
 import { RateLimitService } from '../common/security/rate-limit.service';
+import type { Chatroom, ContentStatus, Prisma } from '@prisma/client';
+import { COMMUNITY_RULES_VERSION } from '../common/community-safety.constants';
+import type { AdminRole } from '../admin-auth/admin-auth.service';
 
 export interface ChatroomDetail {
   id: string;
@@ -34,21 +37,44 @@ export interface ChatroomMessageDto {
   chatroomUid: string;
   content: string;
   createdAt: string;
-  senderIp?: string; // only for admins
   isFlagged: boolean;
+  moderationStatus: ContentStatus;
+  isMine?: boolean;
 
   // Anonymous fields for regular users
   senderNickname: string;
   senderAvatar: string;
 
-  // Real identity fields for admins
-  realSender?: {
-    userId: string;
-    username: string;
-    studentId: string;
-    email: string;
-    role: string;
-  };
+  // Only populated by the dedicated admin endpoint for a superadmin.
+  senderIp?: string;
+  realSender?: AdminChatroomSenderDto;
+}
+
+export interface AdminChatroomSenderDto {
+  userId: string;
+  username: string;
+  email: string;
+  studentId: string | null;
+}
+
+export interface AdminFlaggedMessageDto {
+  id: string;
+  chatroomUid: string;
+  chatroomTitle: string;
+  content: string;
+  senderNickname: string;
+  moderationStatus: ContentStatus;
+  caseId: string | null;
+  createdAt: string;
+  senderIp?: string;
+  realSender?: AdminChatroomSenderDto;
+}
+
+export interface AdminChatroomReadContext {
+  actorId: bigint;
+  role: AdminRole;
+  ip?: string;
+  userAgent?: string;
 }
 
 @Injectable()
@@ -65,6 +91,9 @@ export class ChatroomService implements OnModuleInit, OnModuleDestroy {
 
   onModuleInit() {
     // Start the cleanup background task
+    this.logger.log(
+      `Chatroom retention policy enabled: ${this.config.get('CHATROOM_RETENTION_DAYS')} days; legal-hold evidence is exempt from automatic deletion.`,
+    );
     this.cleanupTimer = setInterval(() => {
       this.handleBackgroundCleanup().catch((err) => {
         this.logger.error('Failed to run chatroom background cleanup', err);
@@ -82,9 +111,20 @@ export class ChatroomService implements OnModuleInit, OnModuleDestroy {
   // 1. Create a chatroom
   async createChatroom(
     userId: bigint,
-    data: { title: string; description?: string; avatarUrl?: string; backgroundUrl?: string },
+    data: {
+      title: string;
+      description?: string;
+      avatarUrl?: string;
+      backgroundUrl?: string;
+      rulesAcknowledged: boolean;
+    },
+    ip?: string,
+    userAgent?: string,
   ): Promise<ChatroomDetail> {
     await this.rateLimit.consume('create-chatroom-user', String(userId), 2, 24 * 3600);
+    if (!data.rulesAcknowledged) {
+      throw new BadRequestException('请先确认聊天房主题和简介同样遵守社区规则');
+    }
     await this.assertCanWrite(userId);
     const title = data.title.trim();
     if (!title) {
@@ -96,12 +136,36 @@ export class ChatroomService implements OnModuleInit, OnModuleDestroy {
     if (data.description && data.description.length > 500) {
       throw new BadRequestException('聊天房简介长度不能超过500个字符');
     }
+    const description = data.description?.trim() || undefined;
+    const moderationContext = {
+      surface: 'chatroom_message' as const,
+      authorId: userId,
+      ip,
+      userAgent,
+    };
+    const moderatedTitle = await this.moderation.moderateOrThrow(title, moderationContext);
+    const moderatedDescription = description
+      ? await this.moderation.moderateOrThrow(description, moderationContext)
+      : null;
+    const pendingResult = [moderatedTitle, moderatedDescription]
+      .filter((result): result is NonNullable<typeof result> => Boolean(result))
+      .sort((left, right) => right.riskLevel - left.riskLevel)
+      .find((result) => result.status === 'pending_review');
+    if (pendingResult) {
+      await this.moderation.recordCase(
+        pendingResult,
+        moderationContext,
+        undefined,
+        `${title}\n${description ?? ''}`,
+      );
+      throw new BadRequestException('聊天房主题或简介需要人工审核，请修改后重试');
+    }
     const mediaUrls = await this.validateChatroomMediaUrls(
       [data.avatarUrl, data.backgroundUrl].filter((value): value is string => Boolean(value)),
       userId,
     );
-    const avatarUrl = data.avatarUrl ? mediaUrls.shift() ?? null : null;
-    const backgroundUrl = data.backgroundUrl ? mediaUrls.shift() ?? null : null;
+    const avatarUrl = data.avatarUrl ? (mediaUrls.shift() ?? null) : null;
+    const backgroundUrl = data.backgroundUrl ? (mediaUrls.shift() ?? null) : null;
 
     // C. Generate uid
     const uid = 'cr-' + randomBytes(8).toString('hex');
@@ -139,8 +203,8 @@ export class ChatroomService implements OnModuleInit, OnModuleDestroy {
       const room = await tx.chatroom.create({
         data: {
           uid,
-          title,
-          description: data.description || null,
+          title: moderatedTitle.content,
+          description: moderatedDescription?.content ?? null,
           avatarUrl,
           backgroundUrl,
           creatorId: userId,
@@ -156,6 +220,25 @@ export class ChatroomService implements OnModuleInit, OnModuleDestroy {
         data: {
           chatroomId: room.id,
           userId,
+        },
+      });
+
+      const uploadKeys = [avatarUrl, backgroundUrl]
+        .filter((value): value is string => Boolean(value))
+        .map((value) => this.cdnUploadKey(value));
+      if (uploadKeys.length > 0) {
+        await tx.upload.updateMany({
+          where: { userId, s3Key: { in: uploadKeys } },
+          data: { attachedToType: 'chatroom', attachedToId: room.id },
+        });
+      }
+      await tx.policyAcceptance.create({
+        data: {
+          userId,
+          policyVersion: COMMUNITY_RULES_VERSION,
+          source: 'publish',
+          ip: ip && ip !== 'unknown' ? ip : null,
+          userAgent: userAgent?.slice(0, 512),
         },
       });
 
@@ -179,6 +262,7 @@ export class ChatroomService implements OnModuleInit, OnModuleDestroy {
     });
 
     const now = new Date();
+    const visibleMediaKeys = await this.visibleChatroomMediaKeys(rooms);
     return rooms.map((room) => {
       const isActive = !room.closedAt && room.expiresAt > now;
       return {
@@ -186,8 +270,8 @@ export class ChatroomService implements OnModuleInit, OnModuleDestroy {
         uid: room.uid,
         title: room.title,
         description: room.description,
-        avatarUrl: room.avatarUrl,
-        backgroundUrl: room.backgroundUrl,
+        avatarUrl: this.visibleChatroomMediaUrl(room.avatarUrl, visibleMediaKeys),
+        backgroundUrl: this.visibleChatroomMediaUrl(room.backgroundUrl, visibleMediaKeys),
         creatorId: String(room.creatorId),
         creatorUsername: room.creator.username,
         createdAt: room.createdAt.toISOString(),
@@ -217,14 +301,15 @@ export class ChatroomService implements OnModuleInit, OnModuleDestroy {
 
     const now = new Date();
     const isActive = !room.closedAt && room.expiresAt > now;
+    const visibleMediaKeys = await this.visibleChatroomMediaKeys([room]);
 
     return {
       id: String(room.id),
       uid: room.uid,
       title: room.title,
       description: room.description,
-      avatarUrl: room.avatarUrl,
-      backgroundUrl: room.backgroundUrl,
+      avatarUrl: this.visibleChatroomMediaUrl(room.avatarUrl, visibleMediaKeys),
+      backgroundUrl: this.visibleChatroomMediaUrl(room.backgroundUrl, visibleMediaKeys),
       creatorId: String(room.creatorId),
       creatorUsername: room.creator.username,
       createdAt: room.createdAt.toISOString(),
@@ -236,7 +321,13 @@ export class ChatroomService implements OnModuleInit, OnModuleDestroy {
   }
 
   // 4. Close chatroom early
-  async closeChatroom(uid: string, userId: bigint, isAdmin: boolean): Promise<void> {
+  async closeChatroom(
+    uid: string,
+    userId: bigint,
+    isAdmin: boolean,
+    adminIp?: string,
+    adminUserAgent?: string,
+  ): Promise<void> {
     const room = await this.prisma.chatroom.findUnique({
       where: { uid },
     });
@@ -254,9 +345,24 @@ export class ChatroomService implements OnModuleInit, OnModuleDestroy {
       throw new ForbiddenException('您没有权限关闭该聊天房');
     }
 
-    await this.prisma.chatroom.update({
-      where: { id: room.id },
-      data: { closedAt: new Date() },
+    await this.prisma.$transaction(async (tx) => {
+      await tx.chatroom.update({
+        where: { id: room.id },
+        data: { closedAt: new Date() },
+      });
+      if (isAdmin) {
+        await tx.auditLog.create({
+          data: {
+            actorId: userId,
+            action: 'chatroom.close',
+            targetType: 'chatroom',
+            targetId: room.id,
+            ip: adminIp && adminIp !== 'unknown' ? adminIp : null,
+            userAgent: adminUserAgent?.slice(0, 512),
+            metadata: { chatroomUid: room.uid, title: room.title },
+          },
+        });
+      }
     });
   }
 
@@ -266,9 +372,23 @@ export class ChatroomService implements OnModuleInit, OnModuleDestroy {
     userId: bigint,
     content: string,
     senderIp: string,
+    rulesAcknowledged: boolean,
+    senderUserAgent?: string,
   ): Promise<ChatroomMessageDto> {
     await this.rateLimit.consume('chatroom-message-user', String(userId), 30, 60);
-    await this.assertCanWrite(userId);
+    if (!rulesAcknowledged) {
+      throw new BadRequestException('请先确认聊天房发言同样遵守社区规则');
+    }
+    const sender = await this.assertCanWrite(userId);
+    if (Date.now() - sender.createdAt.getTime() < 7 * 24 * 60 * 60 * 1000) {
+      await this.rateLimit.consume(
+        'chatroom-message-new-user',
+        String(userId),
+        15,
+        10 * 60,
+        '新用户保护期内发言过于频繁，请稍后再试',
+      );
+    }
     const room = await this.prisma.chatroom.findUnique({
       where: { uid },
     });
@@ -290,32 +410,71 @@ export class ChatroomService implements OnModuleInit, OnModuleDestroy {
       throw new BadRequestException('言论内容最长2000个字符');
     }
 
-    const moderated = await this.moderation.moderateOrThrow(trimmed);
+    const moderationContext = {
+      surface: 'chatroom_message' as const,
+      authorId: userId,
+      ip: senderIp,
+      userAgent: senderUserAgent,
+    };
+    const moderated = await this.moderation.moderateOrThrow(trimmed, moderationContext);
 
-    // Auto-join user as participant if not already joined
-    await this.prisma.chatroomParticipant.upsert({
-      where: {
-        chatroomId_userId: {
+    const msg = await this.prisma.$transaction(async (tx) => {
+      const freshRoom = await tx.chatroom.findUnique({
+        where: { id: room.id },
+        select: { closedAt: true, expiresAt: true },
+      });
+      if (!freshRoom || freshRoom.closedAt || freshRoom.expiresAt <= new Date()) {
+        throw new BadRequestException('该聊天房已关闭，无法发送言论');
+      }
+      await tx.chatroomParticipant.upsert({
+        where: {
+          chatroomId_userId: {
+            chatroomId: room.id,
+            userId,
+          },
+        },
+        update: {},
+        create: {
           chatroomId: room.id,
           userId,
         },
-      },
-      update: {},
-      create: {
-        chatroomId: room.id,
-        userId,
-      },
+      });
+      const created = await tx.chatroomMessage.create({
+        data: {
+          chatroomId: room.id,
+          senderId: userId,
+          content: moderated.content,
+          senderIp,
+          senderUserAgent: senderUserAgent?.slice(0, 512),
+          status: moderated.status,
+          moderationLabels: this.moderation.moderationLabels(
+            moderated,
+          ) as unknown as Prisma.InputJsonValue,
+          contentHash: moderated.contentHash,
+          legalHold: moderated.status === 'pending_review' && moderated.riskLevel >= 4,
+          isFlagged: moderated.status === 'pending_review',
+        },
+      });
+      await tx.policyAcceptance.create({
+        data: {
+          userId,
+          policyVersion: COMMUNITY_RULES_VERSION,
+          source: 'publish',
+          ip: senderIp && senderIp !== 'unknown' ? senderIp : null,
+          userAgent: senderUserAgent?.slice(0, 512),
+        },
+      });
+      return created;
     });
-
-    const msg = await this.prisma.chatroomMessage.create({
-      data: {
-        chatroomId: room.id,
-        senderId: userId,
-        content: moderated.content,
-        senderIp,
-        isFlagged: moderated.status === 'pending_review',
-      },
-    });
+    if (moderated.status === 'pending_review') {
+      await this.moderation.recordCase(moderated, moderationContext, msg.id, trimmed);
+      if (moderated.riskLevel >= 4) {
+        await this.prisma.chatroom.update({
+          where: { id: room.id },
+          data: { legalHold: true },
+        });
+      }
+    }
 
     // Map to response Dto (default return is for the sender, so we can return custom details)
     const pseudonym = this.generatePseudonym(msg.senderId, room.id);
@@ -325,19 +484,15 @@ export class ChatroomService implements OnModuleInit, OnModuleDestroy {
       content: msg.content,
       createdAt: msg.createdAt.toISOString(),
       isFlagged: msg.isFlagged,
+      moderationStatus: msg.status,
+      isMine: true,
       senderNickname: pseudonym.name,
       senderAvatar: pseudonym.avatar,
     };
   }
 
   // 6. Get messages in chatroom
-  async getMessages(
-    uid: string,
-    userId: bigint,
-    isAdmin: boolean,
-    afterId?: string,
-  ): Promise<ChatroomMessageDto[]> {
-    void userId;
+  async getMessages(uid: string, userId: bigint, afterId?: string): Promise<ChatroomMessageDto[]> {
     const room = await this.prisma.chatroom.findUnique({
       where: { uid },
     });
@@ -350,35 +505,25 @@ export class ChatroomService implements OnModuleInit, OnModuleDestroy {
     if (afterId) {
       try {
         parsedAfterId = BigInt(afterId);
-        if (parsedAfterId <= 0n) throw new Error('invalid cursor');
+        if (parsedAfterId <= 0n) {
+          throw new Error('invalid cursor');
+        }
       } catch {
         throw new BadRequestException('无效的消息游标');
       }
     }
 
     const messages = await this.prisma.chatroomMessage.findMany({
-        where: {
-          chatroomId: room.id,
-          ...(parsedAfterId ? { id: { gt: parsedAfterId } } : {}),
-        },
-        orderBy: { id: parsedAfterId ? 'asc' : 'desc' },
-        take: 200,
-        include: {
-          sender: true,
-        },
-      });
-    if (!parsedAfterId) messages.reverse();
-
-    const studentIdByEmail = new Map<string, string>();
-    if (isAdmin) {
-      const emails = [...new Set(messages.map((message) => message.sender.email))];
-      const registrations = await this.prisma.registrationRequest.findMany({
-        where: { email: { in: emails } },
-        select: { email: true, studentId: true },
-      });
-      for (const registration of registrations) {
-        studentIdByEmail.set(registration.email.toLowerCase(), registration.studentId);
-      }
+      where: {
+        chatroomId: room.id,
+        OR: [{ status: 'published' as const }, { senderId: userId }],
+        ...(parsedAfterId ? { id: { gt: parsedAfterId } } : {}),
+      },
+      orderBy: { id: parsedAfterId ? 'asc' : 'desc' },
+      take: 200,
+    });
+    if (!parsedAfterId) {
+      messages.reverse();
     }
 
     const dtos: ChatroomMessageDto[] = [];
@@ -390,20 +535,11 @@ export class ChatroomService implements OnModuleInit, OnModuleDestroy {
         content: msg.content,
         createdAt: msg.createdAt.toISOString(),
         isFlagged: msg.isFlagged,
+        moderationStatus: msg.status,
+        isMine: msg.senderId === userId,
         senderNickname: pseudonym.name,
         senderAvatar: pseudonym.avatar,
       };
-
-      if (isAdmin) {
-        dto.senderIp = msg.senderIp;
-        dto.realSender = {
-          userId: String(msg.senderId),
-          username: msg.sender.username,
-          studentId: studentIdByEmail.get(msg.sender.email.toLowerCase()) ?? 'unknown',
-          email: msg.sender.email,
-          role: msg.sender.role,
-        };
-      }
 
       dtos.push(dto);
     }
@@ -411,8 +547,136 @@ export class ChatroomService implements OnModuleInit, OnModuleDestroy {
     return dtos;
   }
 
+  /**
+   * Dedicated monitoring read path. Moderators and ordinary admins receive the
+   * same room-scoped pseudonyms as users. A superadmin receives the trace
+   * fields only after the corresponding audit record has been persisted.
+   */
+  async getMessagesForAdmin(
+    uid: string,
+    context: AdminChatroomReadContext,
+    afterId?: string,
+  ): Promise<ChatroomMessageDto[]> {
+    const room = await this.prisma.chatroom.findUnique({
+      where: { uid },
+      select: { id: true, uid: true },
+    });
+    if (!room) {
+      throw new NotFoundException('该聊天房不存在');
+    }
+
+    let parsedAfterId: bigint | undefined;
+    if (afterId) {
+      try {
+        parsedAfterId = BigInt(afterId);
+        if (parsedAfterId <= 0n) {
+          throw new Error('invalid cursor');
+        }
+      } catch {
+        throw new BadRequestException('无效的消息游标');
+      }
+    }
+
+    const messages = await this.prisma.chatroomMessage.findMany({
+      where: {
+        chatroomId: room.id,
+        ...(parsedAfterId ? { id: { gt: parsedAfterId } } : {}),
+      },
+      orderBy: { id: parsedAfterId ? 'asc' : 'desc' },
+      take: 200,
+    });
+    if (!parsedAfterId) {
+      messages.reverse();
+    }
+
+    const canTrace = context.role === 'superadmin';
+    const senderById = new Map<bigint, { id: bigint; username: string; email: string }>();
+    const studentIdByEmail = new Map<string, string>();
+
+    if (canTrace && messages.length > 0) {
+      const senders = await this.prisma.user.findMany({
+        where: { id: { in: [...new Set(messages.map((message) => message.senderId))] } },
+        select: { id: true, username: true, email: true },
+      });
+      for (const sender of senders) {
+        senderById.set(sender.id, sender);
+      }
+
+      const emails = [...new Set(senders.map((sender) => sender.email.toLowerCase()))];
+      if (emails.length > 0) {
+        const registrations = await this.prisma.registrationRequest.findMany({
+          where: { email: { in: emails } },
+          select: { email: true, studentId: true },
+        });
+        for (const registration of registrations) {
+          studentIdByEmail.set(registration.email.toLowerCase(), registration.studentId);
+        }
+      }
+    }
+
+    const result = messages.map((message): ChatroomMessageDto => {
+      const pseudonym = this.generatePseudonym(message.senderId, room.id);
+      const dto: ChatroomMessageDto = {
+        id: String(message.id),
+        chatroomUid: room.uid,
+        content: message.content,
+        createdAt: message.createdAt.toISOString(),
+        isFlagged: message.isFlagged,
+        moderationStatus: message.status,
+        senderNickname: pseudonym.name,
+        senderAvatar: pseudonym.avatar,
+      };
+
+      if (canTrace) {
+        const sender = senderById.get(message.senderId);
+        if (sender) {
+          dto.senderIp = message.senderIp;
+          dto.realSender = {
+            userId: String(sender.id),
+            username: sender.username,
+            email: sender.email,
+            studentId: studentIdByEmail.get(sender.email.toLowerCase()) ?? null,
+          };
+        }
+      }
+      return dto;
+    });
+
+    // An empty incremental poll does not expose any new identity. The initial
+    // room snapshot and every incremental response containing a new message
+    // are audited before trace fields leave the service.
+    if (canTrace && (!parsedAfterId || messages.length > 0)) {
+      const lastMessage = messages.at(-1);
+      await this.prisma.auditLog.create({
+        data: {
+          actorId: context.actorId,
+          action: 'chatroom.identity.view',
+          targetType: 'chatroom',
+          targetId: room.id,
+          ip: context.ip && context.ip !== 'unknown' ? context.ip : null,
+          userAgent: context.userAgent?.slice(0, 512),
+          metadata: {
+            chatroomUid: room.uid,
+            messageCount: messages.length,
+            distinctSenderCount: new Set(messages.map((message) => String(message.senderId))).size,
+            firstMessageId: messages[0] ? String(messages[0].id) : null,
+            lastMessageId: lastMessage ? String(lastMessage.id) : null,
+            cursorAfterId: parsedAfterId ? String(parsedAfterId) : null,
+          },
+        },
+      });
+    }
+
+    return result;
+  }
+
   // 7. Flag / mark a message (Admins only)
-  async flagMessage(messageId: string, adminUserId: bigint): Promise<void> {
+  async flagMessage(
+    messageId: string,
+    adminUserId: bigint,
+    adminIp?: string,
+    adminUserAgent?: string,
+  ): Promise<void> {
     let id: bigint;
     try {
       id = BigInt(messageId);
@@ -422,7 +686,6 @@ export class ChatroomService implements OnModuleInit, OnModuleDestroy {
     const msg = await this.prisma.chatroomMessage.findUnique({
       where: { id },
       include: {
-        sender: true,
         chatroom: true,
       },
     });
@@ -431,32 +694,62 @@ export class ChatroomService implements OnModuleInit, OnModuleDestroy {
       throw new NotFoundException('该言论不存在');
     }
 
-    if (msg.isFlagged) {
-      return; // already flagged
+    if (!msg.isFlagged || msg.status !== 'pending_review' || !msg.legalHold) {
+      await this.prisma.$transaction([
+        this.prisma.chatroomMessage.update({
+          where: { id: msg.id },
+          data: { isFlagged: true, status: 'pending_review', legalHold: true },
+        }),
+        this.prisma.chatroom.update({
+          where: { id: msg.chatroomId },
+          data: { legalHold: true },
+        }),
+        this.prisma.auditLog.create({
+          data: {
+            actorId: adminUserId,
+            action: 'chatroom-message.flag',
+            targetType: 'chatroom-message',
+            targetId: msg.id,
+            ip: adminIp && adminIp !== 'unknown' ? adminIp : null,
+            userAgent: adminUserAgent?.slice(0, 512),
+            metadata: {
+              chatroomUid: msg.chatroom.uid,
+              // The audit record may retain the internal subject ID, but it is
+              // never returned by the monitoring list APIs.
+              senderId: String(msg.senderId),
+            },
+          },
+        }),
+      ]);
     }
 
-    await this.prisma.$transaction([
-      this.prisma.chatroomMessage.update({
-        where: { id: msg.id },
-        data: { isFlagged: true },
-      }),
-      this.prisma.auditLog.create({
-        data: {
-          actorId: adminUserId,
-          action: 'chatroom-message.flag',
-          targetType: 'chatroom-message',
-          targetId: msg.id,
-          metadata: {
-            chatroomUid: msg.chatroom.uid,
-            senderId: String(msg.senderId),
-          },
-        },
-      }),
-    ]);
+    const contentHash = msg.contentHash ?? createHash('sha256').update(msg.content).digest('hex');
+    await this.moderation.recordCase(
+      {
+        content: msg.content,
+        status: 'pending_review',
+        blocked: false,
+        matches: [],
+        reasonCodes: ['manual_admin_flag'],
+        riskLevel: 3,
+        contentHash,
+      },
+      {
+        surface: 'chatroom_message',
+        authorId: msg.senderId,
+        ip: msg.senderIp,
+        userAgent: msg.senderUserAgent ?? undefined,
+      },
+      msg.id,
+      msg.content,
+    );
   }
 
   // Helper: map Chatroom to Detail DTO
-  private mapToDetailDto(room: any, participantCount: number): ChatroomDetail {
+  private mapToDetailDto(
+    room: Chatroom & { creator: { username: string } },
+    participantCount: number,
+  ): ChatroomDetail {
     const now = new Date();
     const isActive = !room.closedAt && room.expiresAt > now;
     return {
@@ -505,41 +798,96 @@ export class ChatroomService implements OnModuleInit, OnModuleDestroy {
     return { name: `匿名 · ${name}`, avatar };
   }
 
-  // 9. Get all flagged messages for admin
-  async getFlaggedMessages(): Promise<any[]> {
+  // 9. Get all flagged messages for the moderation team. Identity fields are
+  // attached only for a superadmin and the disclosure is automatically audited.
+  async getFlaggedMessages(context: AdminChatroomReadContext): Promise<AdminFlaggedMessageDto[]> {
     const messages = await this.prisma.chatroomMessage.findMany({
       where: { isFlagged: true },
       include: {
-        sender: true,
         chatroom: true,
       },
       orderBy: { createdAt: 'desc' },
       take: 200,
     });
 
-    const registrations = await this.prisma.registrationRequest.findMany({
-      where: { email: { in: [...new Set(messages.map((message) => message.sender.email))] } },
-      select: { email: true, studentId: true },
+    const cases = await this.prisma.moderationCase.findMany({
+      where: {
+        surface: 'chatroom_message',
+        targetId: { in: messages.map((message) => message.id) },
+      },
+      select: { id: true, targetId: true },
     });
-    const studentIdByEmail = new Map(
-      registrations.map((registration) => [
-        registration.email.toLowerCase(),
-        registration.studentId,
-      ]),
+    const caseIdByMessage = new Map(
+      cases
+        .filter((item): item is typeof item & { targetId: bigint } => item.targetId !== null)
+        .map((item) => [item.targetId, String(item.id)]),
     );
 
-    const result = [];
+    const canTrace = context.role === 'superadmin';
+    const senderById = new Map<bigint, { id: bigint; username: string; email: string }>();
+    const studentIdByEmail = new Map<string, string>();
+    if (canTrace && messages.length > 0) {
+      const senders = await this.prisma.user.findMany({
+        where: { id: { in: [...new Set(messages.map((message) => message.senderId))] } },
+        select: { id: true, username: true, email: true },
+      });
+      for (const sender of senders) {
+        senderById.set(sender.id, sender);
+      }
+      const emails = [...new Set(senders.map((sender) => sender.email.toLowerCase()))];
+      if (emails.length > 0) {
+        const registrations = await this.prisma.registrationRequest.findMany({
+          where: { email: { in: emails } },
+          select: { email: true, studentId: true },
+        });
+        for (const registration of registrations) {
+          studentIdByEmail.set(registration.email.toLowerCase(), registration.studentId);
+        }
+      }
+    }
+
+    const result: AdminFlaggedMessageDto[] = [];
     for (const msg of messages) {
       const pseudonym = this.generatePseudonym(msg.senderId, msg.chatroomId);
-      result.push({
+      const dto: AdminFlaggedMessageDto = {
         id: String(msg.id),
         chatroomUid: msg.chatroom.uid,
         chatroomTitle: msg.chatroom.title,
         content: msg.content,
-        senderIp: msg.senderIp,
-        studentId: studentIdByEmail.get(msg.sender.email.toLowerCase()) ?? 'unknown',
         senderNickname: pseudonym.name,
+        moderationStatus: msg.status,
+        caseId: caseIdByMessage.get(msg.id) ?? null,
         createdAt: msg.createdAt.toISOString(),
+      };
+      if (canTrace) {
+        const sender = senderById.get(msg.senderId);
+        if (sender) {
+          dto.senderIp = msg.senderIp;
+          dto.realSender = {
+            userId: String(sender.id),
+            username: sender.username,
+            email: sender.email,
+            studentId: studentIdByEmail.get(sender.email.toLowerCase()) ?? null,
+          };
+        }
+      }
+      result.push(dto);
+    }
+
+    if (canTrace) {
+      await this.prisma.auditLog.create({
+        data: {
+          actorId: context.actorId,
+          action: 'chatroom.flagged-identity.view',
+          targetType: 'chatroom-message',
+          ip: context.ip && context.ip !== 'unknown' ? context.ip : null,
+          userAgent: context.userAgent?.slice(0, 512),
+          metadata: {
+            messageCount: messages.length,
+            distinctSenderCount: new Set(messages.map((message) => String(message.senderId))).size,
+            messageIds: messages.map((message) => String(message.id)),
+          },
+        },
       });
     }
     return result;
@@ -556,24 +904,62 @@ export class ChatroomService implements OnModuleInit, OnModuleDestroy {
     if (new Set(keys).size !== keys.length) {
       throw new BadRequestException('聊天房图片不能重复');
     }
-    const owned = await this.prisma.upload.count({
+    const owned = await this.prisma.upload.findMany({
       where: {
         userId,
         s3Key: { in: keys },
-        moderationStatus: 'passed',
+        moderationStatus: { in: ['pending', 'passed', 'flagged'] },
       },
+      select: { s3Key: true },
     });
-    if (owned !== keys.length) {
+    if (owned.length !== keys.length) {
       throw new BadRequestException('图片不存在或不属于当前用户');
     }
     const base = this.config.get('CDN_BASE_URL').replace(/\/+$/, '');
     return keys.map((key) => `${base}/${key}`);
   }
 
-  private async assertCanWrite(userId: bigint): Promise<void> {
+  private async visibleChatroomMediaKeys(
+    rooms: Array<{ avatarUrl: string | null; backgroundUrl: string | null }>,
+  ) {
+    const keys = new Set<string>();
+    for (const room of rooms) {
+      for (const value of [room.avatarUrl, room.backgroundUrl]) {
+        if (!value) {
+          continue;
+        }
+        try {
+          keys.add(this.cdnUploadKey(value));
+        } catch {
+          // Invalid legacy media URLs are never exposed.
+        }
+      }
+    }
+    if (keys.size === 0) {
+      return new Set<string>();
+    }
+    const passed = await this.prisma.upload.findMany({
+      where: { s3Key: { in: [...keys] }, moderationStatus: 'passed' },
+      select: { s3Key: true },
+    });
+    return new Set(passed.map((upload) => upload.s3Key));
+  }
+
+  private visibleChatroomMediaUrl(value: string | null, visibleKeys: Set<string>) {
+    if (!value) {
+      return null;
+    }
+    try {
+      return visibleKeys.has(this.cdnUploadKey(value)) ? value : null;
+    } catch {
+      return null;
+    }
+  }
+
+  private async assertCanWrite(userId: bigint) {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
-      select: { status: true, suspendedUntil: true },
+      select: { status: true, suspendedUntil: true, createdAt: true },
     });
     if (!user || user.status === 'banned') {
       throw new ForbiddenException('账号不可用');
@@ -581,6 +967,7 @@ export class ChatroomService implements OnModuleInit, OnModuleDestroy {
     if (user.status === 'suspended' && (!user.suspendedUntil || user.suspendedUntil > new Date())) {
       throw new ForbiddenException('账号正在禁言中');
     }
+    return user;
   }
 
   private cdnUploadKey(value: string): string {
@@ -629,11 +1016,35 @@ export class ChatroomService implements OnModuleInit, OnModuleDestroy {
       this.logger.log(`Auto-closed ${expiredCount.count} expired chatrooms.`);
     }
 
-    // B. Delete chatroom data older than 72h: 72h past creation
-    const deleteThreshold = new Date(Date.now() - 72 * 3600 * 1000); // 72 hours ago
+    // B. Apply the configured retention policy from room creation time.
+    // Legal-hold rooms are never automatically deleted. Once they cross the
+    // same retention threshold, minimize them to held evidence only.
+    const retentionDays = this.config.get('CHATROOM_RETENTION_DAYS');
+    const deleteThreshold = new Date(now.getTime() - retentionDays * 24 * 3600 * 1000);
+    const heldRooms = await this.prisma.chatroom.findMany({
+      where: { createdAt: { lte: deleteThreshold }, legalHold: true },
+      select: { id: true },
+    });
+    if (heldRooms.length > 0) {
+      const heldRoomIds = heldRooms.map((room) => room.id);
+      const [removedMessages, removedParticipants] = await this.prisma.$transaction([
+        this.prisma.chatroomMessage.deleteMany({
+          where: { chatroomId: { in: heldRoomIds }, legalHold: false },
+        }),
+        this.prisma.chatroomParticipant.deleteMany({
+          where: { chatroomId: { in: heldRoomIds } },
+        }),
+      ]);
+      if (removedMessages.count > 0 || removedParticipants.count > 0) {
+        this.logger.log(
+          `Minimized ${heldRooms.length} legal-hold chatrooms after the ${retentionDays}-day retention threshold: removed ${removedMessages.count} non-held messages and ${removedParticipants.count} unrelated participant records; held messages were retained.`,
+        );
+      }
+    }
     const toDelete = await this.prisma.chatroom.findMany({
       where: {
         createdAt: { lte: deleteThreshold },
+        legalHold: false,
       },
       select: { id: true, uid: true },
     });
@@ -652,7 +1063,7 @@ export class ChatroomService implements OnModuleInit, OnModuleDestroy {
       this.logger.log(
         `Auto-deleted ${deleteResult.count} chatrooms (UIDs: ${uids.join(
           ', ',
-        )}) older than 72 hours.`,
+        )}) after the configured ${retentionDays}-day retention period.`,
       );
     }
   }

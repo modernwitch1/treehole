@@ -1,20 +1,27 @@
 import {
   Body,
   Controller,
-  ForbiddenException,
   Get,
   Param,
   Post,
   Query,
   Req,
+  UnauthorizedException,
   UseGuards,
 } from '@nestjs/common';
-import { IsNotEmpty, IsOptional, IsString, IsUrl, MaxLength } from 'class-validator';
+import { IsBoolean, IsNotEmpty, IsOptional, IsString, IsUrl, MaxLength } from 'class-validator';
+import type { Request } from 'express';
 import { UserAuthGuard } from '../auth/user-auth.guard';
 import { AdminAuthGuard, type AdminRequest } from '../admin-auth/admin-auth.guard';
+import type { AdminPrincipal } from '../admin-auth/admin-auth.service';
 import { CurrentUser, type AuthUser } from '../common/decorators/current-user.decorator';
 import { ClientIp } from '../common/decorators/client-ip.decorator';
-import { ChatroomService, type ChatroomDetail, type ChatroomMessageDto } from './chatroom.service';
+import {
+  type AdminFlaggedMessageDto,
+  ChatroomService,
+  type ChatroomDetail,
+  type ChatroomMessageDto,
+} from './chatroom.service';
 
 // DTOs
 export class CreateChatroomDto {
@@ -39,6 +46,9 @@ export class CreateChatroomDto {
   @IsUrl({ require_protocol: true, protocols: ['http', 'https'] })
   @MaxLength(2048)
   backgroundUrl?: string;
+
+  @IsBoolean()
+  rulesAcknowledged!: boolean;
 }
 
 export class SendMessageDto {
@@ -46,6 +56,9 @@ export class SendMessageDto {
   @IsNotEmpty()
   @MaxLength(2000)
   content!: string;
+
+  @IsBoolean()
+  rulesAcknowledged!: boolean;
 }
 
 // 1. Regular User Endpoints
@@ -55,8 +68,13 @@ export class ChatroomController {
   constructor(private readonly chatroomService: ChatroomService) {}
 
   @Post()
-  create(@CurrentUser() user: AuthUser, @Body() body: CreateChatroomDto): Promise<ChatroomDetail> {
-    return this.chatroomService.createChatroom(user.id, body);
+  create(
+    @CurrentUser() user: AuthUser,
+    @Body() body: CreateChatroomDto,
+    @ClientIp() ip: string,
+    @Req() req: Request,
+  ): Promise<ChatroomDetail> {
+    return this.chatroomService.createChatroom(user.id, body, ip, req.headers['user-agent']);
   }
 
   @Get()
@@ -81,7 +99,7 @@ export class ChatroomController {
     @Query('afterId') afterId: string | undefined,
     @CurrentUser() user: AuthUser,
   ): Promise<ChatroomMessageDto[]> {
-    return this.chatroomService.getMessages(uid, user.id, false, afterId);
+    return this.chatroomService.getMessages(uid, user.id, afterId);
   }
 
   @Post(':uid/messages')
@@ -90,8 +108,16 @@ export class ChatroomController {
     @CurrentUser() user: AuthUser,
     @ClientIp() ip: string,
     @Body() body: SendMessageDto,
+    @Req() req: Request,
   ): Promise<ChatroomMessageDto> {
-    return this.chatroomService.sendMessage(uid, user.id, body.content, ip);
+    return this.chatroomService.sendMessage(
+      uid,
+      user.id,
+      body.content,
+      ip,
+      body.rulesAcknowledged,
+      req.headers['user-agent'],
+    );
   }
 }
 
@@ -107,11 +133,17 @@ export class AdminChatroomController {
   }
 
   @Get('flagged-messages')
-  getFlaggedMessages(@Req() req: AdminRequest): Promise<any[]> {
-    if (req.admin?.role !== 'admin') {
-      throw new ForbiddenException('只有管理员可以查看溯源信息');
-    }
-    return this.chatroomService.getFlaggedMessages();
+  getFlaggedMessages(
+    @Req() req: AdminRequest,
+    @ClientIp() ip: string,
+  ): Promise<AdminFlaggedMessageDto[]> {
+    const admin = this.currentAdmin(req);
+    return this.chatroomService.getFlaggedMessages({
+      actorId: BigInt(admin.id),
+      role: admin.role,
+      ip,
+      userAgent: req.headers['user-agent'],
+    });
   }
 
   @Get(':uid/messages')
@@ -119,20 +151,49 @@ export class AdminChatroomController {
     @Param('uid') uid: string,
     @Query('afterId') afterId: string | undefined,
     @Req() req: AdminRequest,
+    @ClientIp() ip: string,
   ): Promise<ChatroomMessageDto[]> {
-    const adminId = BigInt(req.admin!.id);
-    return this.chatroomService.getMessages(uid, adminId, req.admin!.role === 'admin', afterId);
+    const admin = this.currentAdmin(req);
+    return this.chatroomService.getMessagesForAdmin(
+      uid,
+      {
+        actorId: BigInt(admin.id),
+        role: admin.role,
+        ip,
+        userAgent: req.headers['user-agent'],
+      },
+      afterId,
+    );
   }
 
   @Post('messages/:id/flag')
-  flagMessage(@Param('id') id: string, @Req() req: AdminRequest): Promise<void> {
-    const adminId = BigInt(req.admin!.id);
-    return this.chatroomService.flagMessage(id, adminId);
+  flagMessage(
+    @Param('id') id: string,
+    @Req() req: AdminRequest,
+    @ClientIp() ip: string,
+  ): Promise<void> {
+    const adminId = this.adminId(req);
+    return this.chatroomService.flagMessage(id, adminId, ip, req.headers['user-agent']);
   }
 
   @Post(':uid/close')
-  closeForAdmin(@Param('uid') uid: string, @Req() req: AdminRequest): Promise<void> {
-    const adminId = BigInt(req.admin!.id);
-    return this.chatroomService.closeChatroom(uid, adminId, true);
+  closeForAdmin(
+    @Param('uid') uid: string,
+    @Req() req: AdminRequest,
+    @ClientIp() ip: string,
+  ): Promise<void> {
+    const adminId = this.adminId(req);
+    return this.chatroomService.closeChatroom(uid, adminId, true, ip, req.headers['user-agent']);
+  }
+
+  private adminId(req: AdminRequest): bigint {
+    return BigInt(this.currentAdmin(req).id);
+  }
+
+  private currentAdmin(req: AdminRequest): AdminPrincipal {
+    if (!req.admin) {
+      throw new UnauthorizedException('未登录');
+    }
+    return req.admin;
   }
 }

@@ -1,7 +1,8 @@
 'use client';
 
 import * as React from 'react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import Link from 'next/link';
+import { Card, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
@@ -41,6 +42,7 @@ export default function AdminChatroomsPage() {
   const [flaggedMessages, setFlaggedMessages] = React.useState<AdminFlaggedMessageDto[]>([]);
   const [selectedMsgId, setSelectedMsgId] = React.useState<string | null>(null);
   const roomsRequestInFlightRef = React.useRef(false);
+  const flaggedRequestInFlightRef = React.useRef(false);
   const messageRequestsInFlightRef = React.useRef(new Set<string>());
   const selectedRoomUidRef = React.useRef<string | null>(null);
   const lastMessageIdsRef = React.useRef(new Map<string, string>());
@@ -58,14 +60,25 @@ export default function AdminChatroomsPage() {
     if (roomsRequestInFlightRef.current) return;
     roomsRequestInFlightRef.current = true;
     try {
-      const [data, flagged] = await Promise.all([adminGetChatrooms(), adminGetFlaggedMessages()]);
+      const data = await adminGetChatrooms();
       setRooms(data);
-      setFlaggedMessages(flagged);
-    } catch (err) {
+    } catch {
       toast.error('加载监控数据失败');
     } finally {
       roomsRequestInFlightRef.current = false;
       setLoading(false);
+    }
+  }, []);
+
+  const loadFlaggedMessages = React.useCallback(async () => {
+    if (flaggedRequestInFlightRef.current) return;
+    flaggedRequestInFlightRef.current = true;
+    try {
+      setFlaggedMessages(await adminGetFlaggedMessages());
+    } catch {
+      toast.error('加载已标记消息失败');
+    } finally {
+      flaggedRequestInFlightRef.current = false;
     }
   }, []);
 
@@ -86,12 +99,15 @@ export default function AdminChatroomsPage() {
             (message, index) =>
               message.id === next[index]?.id &&
               message.content === next[index]?.content &&
-              message.isFlagged === next[index]?.isFlagged,
+              message.isFlagged === next[index]?.isFlagged &&
+              message.moderationStatus === next[index]?.moderationStatus &&
+              message.senderIp === next[index]?.senderIp &&
+              message.realSender?.userId === next[index]?.realSender?.userId,
           );
         return unchanged ? current : next;
       });
       if (msgs.length > 0) lastMessageIdsRef.current.set(uid, msgs[msgs.length - 1].id);
-    } catch (err) {
+    } catch {
       // quiet fail on polling
     } finally {
       messageRequestsInFlightRef.current.delete(uid);
@@ -113,6 +129,13 @@ export default function AdminChatroomsPage() {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
   }, [loadRooms]);
+
+  // Flagged-message identity snapshots are loaded once and on explicit user
+  // actions. This avoids generating repetitive trace-access audit events from
+  // a background poll while the page is merely left open.
+  React.useEffect(() => {
+    void loadFlaggedMessages();
+  }, [loadFlaggedMessages]);
 
   // Active rooms refresh every 5s. Historical rooms are immutable, so one load is enough.
   React.useEffect(() => {
@@ -157,7 +180,7 @@ export default function AdminChatroomsPage() {
       await adminCloseChatroom(uid);
       toast.success('已强行关闭该聊天房');
       loadRooms();
-    } catch (err) {
+    } catch {
       toast.error('关闭聊天房失败');
     }
   };
@@ -165,18 +188,19 @@ export default function AdminChatroomsPage() {
   const handleFlagMessage = async (msgId: string) => {
     if (
       !confirm(
-        '确定要将该言论标记为违规吗？标记后的记录会被持久化保存至专属审计日志中（保留其IP/学号/言论内容/时间，即使聊天房72h后被清理，此日志仍会保留）。',
+        '确定将该消息隔离并转入统一审核案件吗？消息证据会被保全；只有超级管理员能直接查看真实身份。',
       )
     )
       return;
 
     try {
       await adminFlagMessage(msgId);
-      toast.success('成功标记并记录审计日志！');
+      toast.success('已隔离消息并转入统一审核队列');
+      void loadFlaggedMessages();
       if (selectedRoomUid) {
         loadMessages(selectedRoomUid, true);
       }
-    } catch (err) {
+    } catch {
       toast.error('标记言论失败');
     }
   };
@@ -207,7 +231,7 @@ export default function AdminChatroomsPage() {
       <div>
         <h1 className="text-2xl font-bold tracking-tight">聊天房实时监控</h1>
         <p className="text-sm text-muted-foreground mt-1">
-          实时监控平台上的匿名聊天房。支持查看匿名用户背后的真实学号和IP，并可一键标记违规信息保存至审计日志。
+          普通管理员和审核员始终只看到匿名昵称；超级管理员可直接溯源，每次身份数据读取都会自动留下审计记录。
         </p>
       </div>
 
@@ -256,6 +280,7 @@ export default function AdminChatroomsPage() {
                 onClick={() => {
                   setTab('flagged');
                   setSelectedRoomUid(null);
+                  void loadFlaggedMessages();
                 }}
                 className={`flex-1 text-center py-1 rounded-sm transition-all font-semibold ${
                   tab === 'flagged'
@@ -294,7 +319,7 @@ export default function AdminChatroomsPage() {
                       >
                         <div className="flex items-center justify-between w-full">
                           <span className="text-xs font-semibold text-foreground truncate max-w-[120px]">
-                            {msg.senderNickname}
+                            {msg.realSender?.username ?? msg.senderNickname}
                           </span>
                           <span className="text-[10px] text-muted-foreground">
                             {new Date(msg.createdAt).toLocaleTimeString([], {
@@ -307,7 +332,13 @@ export default function AdminChatroomsPage() {
                           {msg.content}
                         </p>
                         <div className="flex items-center justify-between text-[10px] text-muted-foreground mt-1">
-                          <span>学号: {msg.studentId}</span>
+                          <span>
+                            {msg.realSender
+                              ? `学号 ${msg.realSender.studentId ?? '未关联'} · IP ${msg.senderIp ?? '未记录'}`
+                              : msg.caseId
+                                ? `案件 #${msg.caseId}`
+                                : '待转入审核案件'}
+                          </span>
                           <span className="text-[9px] bg-muted px-1 rounded-sm truncate max-w-[100px]">
                             {msg.chatroomTitle}
                           </span>
@@ -439,23 +470,44 @@ export default function AdminChatroomsPage() {
                         </Avatar>
 
                         <div className="flex-1 min-w-0 space-y-1.5">
-                          {/* Nickname, Real studentId, IP and Timestamp */}
+                          {/* Anonymous nickname, moderation state and timestamp */}
                           <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                             <span className="text-xs font-semibold text-foreground">
                               {msg.senderNickname}
                             </span>
 
-                            {/* Real Identity Badge (Red highlighted for Admin) */}
-                            <Badge className="bg-destructive/10 text-destructive border border-destructive/20 text-[10px] px-1.5 py-0 flex items-center gap-1 font-semibold">
-                              <ShieldAlert className="size-3" />
-                              <span>学号: {msg.realSender?.studentId}</span>
-                              <span>(IP: {msg.senderIp})</span>
+                            <Badge
+                              variant={msg.moderationStatus === 'published' ? 'outline' : 'warning'}
+                              className="text-[10px] px-1.5 py-0"
+                            >
+                              {msg.moderationStatus === 'published' ? '公开可见' : '已隔离待审'}
                             </Badge>
 
                             <span className="text-[10px] text-muted-foreground">
                               {new Date(msg.createdAt).toLocaleTimeString()}
                             </span>
                           </div>
+
+                          {msg.realSender && (
+                            <div className="grid gap-x-4 gap-y-1 rounded-md border border-primary/20 bg-primary/5 px-3 py-2 text-[11px] sm:grid-cols-2">
+                              <span>
+                                <strong className="text-primary">真实账号：</strong>
+                                {msg.realSender.username}
+                              </span>
+                              <span>
+                                <strong className="text-primary">学号：</strong>
+                                {msg.realSender.studentId ?? '未关联学号记录'}
+                              </span>
+                              <span className="break-all">
+                                <strong className="text-primary">邮箱：</strong>
+                                {msg.realSender.email}
+                              </span>
+                              <span className="break-all">
+                                <strong className="text-primary">IP：</strong>
+                                {msg.senderIp ?? '未记录'}
+                              </span>
+                            </div>
+                          )}
 
                           {/* Message Content */}
                           <p className="text-sm text-foreground whitespace-pre-wrap break-all leading-normal">
@@ -505,7 +557,9 @@ export default function AdminChatroomsPage() {
                       <div>
                         <h2 className="text-base font-bold text-foreground">违规言论审计报告</h2>
                         <p className="text-xs text-muted-foreground mt-0.5">
-                          此言论已被管理员标记并写入专属审计日志文件中
+                          {msg.realSender
+                            ? '此消息已被隔离；本次超级管理员身份调阅已自动记入审计日志'
+                            : '此消息已被隔离；当前权限仅显示房间内匿名昵称'}
                         </p>
                       </div>
                     </div>
@@ -521,18 +575,56 @@ export default function AdminChatroomsPage() {
                         </p>
                       </div>
 
-                      <div className="space-y-1 bg-muted/30 p-3 rounded-lg border border-border/40">
-                        <span className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">
-                          真实身份 (学号)
-                        </span>
-                        <p className="text-sm font-bold text-destructive">{msg.studentId}</p>
-                      </div>
+                      {msg.realSender && (
+                        <>
+                          <div className="space-y-1 rounded-lg border border-primary/20 bg-primary/5 p-3">
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-primary">
+                              真实账号 / UID
+                            </span>
+                            <p className="text-sm font-semibold text-foreground">
+                              {msg.realSender.username} / {msg.realSender.userId}
+                            </p>
+                          </div>
+                          <div className="space-y-1 rounded-lg border border-primary/20 bg-primary/5 p-3">
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-primary">
+                              学号
+                            </span>
+                            <p className="text-sm font-semibold text-foreground">
+                              {msg.realSender.studentId ?? '未关联学号记录'}
+                            </p>
+                          </div>
+                          <div className="space-y-1 rounded-lg border border-primary/20 bg-primary/5 p-3">
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-primary">
+                              邮箱
+                            </span>
+                            <p className="break-all text-sm font-semibold text-foreground">
+                              {msg.realSender.email}
+                            </p>
+                          </div>
+                          <div className="space-y-1 rounded-lg border border-primary/20 bg-primary/5 p-3">
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-primary">
+                              发送 IP
+                            </span>
+                            <p className="break-all text-sm font-semibold text-foreground">
+                              {msg.senderIp ?? '未记录'}
+                            </p>
+                          </div>
+                        </>
+                      )}
 
                       <div className="space-y-1 bg-muted/30 p-3 rounded-lg border border-border/40">
                         <span className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">
-                          发送者 IP 地址
+                          关联审核案件
                         </span>
-                        <p className="text-sm font-mono text-foreground">{msg.senderIp}</p>
+                        {msg.caseId ? (
+                          <Button variant="link" className="h-auto p-0 text-sm" asChild>
+                            <Link href={`/moderation?status=all&caseId=${msg.caseId}#case-${msg.caseId}`}>
+                              案件 #{msg.caseId} · 前往复核
+                            </Link>
+                          </Button>
+                        ) : (
+                          <p className="text-sm text-muted-foreground">尚未关联，请重新执行“标记违规”</p>
+                        )}
                       </div>
 
                       <div className="space-y-1 bg-muted/30 p-3 rounded-lg border border-border/40">
@@ -575,7 +667,11 @@ export default function AdminChatroomsPage() {
                   {/* Footer status */}
                   <div className="bg-green-500/10 border border-green-500/20 rounded-lg p-3 flex items-center gap-2.5 text-xs text-green-700 dark:text-green-300 font-medium">
                     <CheckCircle className="size-4 shrink-0 text-green-500" />
-                    <span>审计状态：安全存储在 logs/flagged-messages.log 文件中，永久保留。</span>
+                    <span>
+                      {msg.realSender
+                        ? '证据状态：消息已隔离并保留统一审核案件入口；溯源信息已自动留痕。'
+                        : '证据状态：消息已隔离并保留统一审核案件入口；当前工作台未暴露真实身份。'}
+                    </span>
                   </div>
                 </div>
               );
@@ -587,7 +683,7 @@ export default function AdminChatroomsPage() {
               <p className="text-xs text-muted-foreground mt-1">
                 {tab === 'flagged'
                   ? '请从左侧列表中点击一个被标记的违规言论以调阅详细审计报告。'
-                  : '请从左侧列表中点击一个聊天房开启实时言论监控与逆匿名溯源。'}
+                  : '请从左侧列表中点击一个聊天房查看言论；超级管理员会同时看到发送者溯源信息。'}
               </p>
             </div>
           )}

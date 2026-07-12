@@ -81,7 +81,8 @@ export class HttpExceptionFilter implements ExceptionFilter {
     // Errors raised before a controller runs (JSON parser / Multer) are not
     // Nest HttpExceptions, but may carry an HTTP status.
     if (exception && typeof exception === 'object') {
-      const status = (exception as { status?: unknown; statusCode?: unknown }).status ??
+      const status =
+        (exception as { status?: unknown; statusCode?: unknown }).status ??
         (exception as { statusCode?: unknown }).statusCode;
       if (typeof status === 'number' && status >= 400 && status < 500) {
         return {

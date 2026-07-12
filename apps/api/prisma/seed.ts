@@ -2,7 +2,7 @@
 // 用法: pnpm db:seed
 // 注意: 仅在开发/演示环境运行, 生产环境请勿执行
 
-import { PrismaClient, SensitiveAction, SensitiveCategory } from '@prisma/client';
+import { PrismaClient, SensitiveAction, SensitiveCategory, UserRole } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
@@ -113,46 +113,54 @@ async function main() {
   const { hash } = await import('argon2');
   const passwordHash = await hash('123qweasd!');
 
-  await prisma.registrationRequest.upsert({
-    where: { studentId: 'hezhong233' },
-    update: {
-      email: 'hezhong233@pop.zjgsu.edu.cn',
-      passwordHash,
-      username: 'hezhong233',
-      status: 'approved',
-      expiresAt: new Date(Date.now() + 10 * 365 * 24 * 3600 * 1000), // 10 years
-    },
-    create: {
-      studentId: 'hezhong233',
-      email: 'hezhong233@pop.zjgsu.edu.cn',
-      passwordHash,
-      username: 'hezhong233',
-      method: 'email',
-      status: 'approved',
-      expiresAt: new Date(Date.now() + 10 * 365 * 24 * 3600 * 1000), // 10 years
-    },
-  });
+  const testUsers: Array<{ username: string; role: UserRole }> = [
+    { username: 'hezhong233', role: UserRole.superadmin },
+    { username: 'hezhong666', role: UserRole.admin },
+  ];
 
-  await prisma.user.upsert({
-    where: { username: 'hezhong233' },
-    update: {
-      email: 'hezhong233@pop.zjgsu.edu.cn',
-      passwordHash,
-      role: 'admin',
-      status: 'active',
-      emailVerifiedAt: new Date(),
-    },
-    create: {
-      username: 'hezhong233',
-      email: 'hezhong233@pop.zjgsu.edu.cn',
-      passwordHash,
-      role: 'admin',
-      status: 'active',
-      emailVerifiedAt: new Date(),
-      termsAcceptedAt: new Date(),
-    },
-  });
-  console.log('✅ User hezhong233 ready.');
+  for (const testUser of testUsers) {
+    const email = `${testUser.username}@pop.zjgsu.edu.cn`;
+    await prisma.registrationRequest.upsert({
+      where: { studentId: testUser.username },
+      update: {
+        email,
+        passwordHash,
+        username: testUser.username,
+        status: 'approved',
+        expiresAt: new Date(Date.now() + 10 * 365 * 24 * 3600 * 1000), // 10 years
+      },
+      create: {
+        studentId: testUser.username,
+        email,
+        passwordHash,
+        username: testUser.username,
+        method: 'email',
+        status: 'approved',
+        expiresAt: new Date(Date.now() + 10 * 365 * 24 * 3600 * 1000), // 10 years
+      },
+    });
+
+    await prisma.user.upsert({
+      where: { username: testUser.username },
+      update: {
+        email,
+        passwordHash,
+        role: testUser.role,
+        status: 'active',
+        emailVerifiedAt: new Date(),
+      },
+      create: {
+        username: testUser.username,
+        email,
+        passwordHash,
+        role: testUser.role,
+        status: 'active',
+        emailVerifiedAt: new Date(),
+        termsAcceptedAt: new Date(),
+      },
+    });
+    console.log(`✅ User ${testUser.username} ready as ${testUser.role}.`);
+  }
 }
 
 main()

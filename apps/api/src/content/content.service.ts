@@ -4,17 +4,33 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import type { ContentStatus, Prisma } from '@prisma/client';
-import { createHmac } from 'crypto';
-import MarkdownIt from 'markdown-it';
+import { Prisma, type ContentStatus } from '@prisma/client';
+import { createHash } from 'node:crypto';
 import { PrismaService } from '../prisma/prisma.module';
 import { AppConfig } from '../config/app.config';
 import { ModerationService } from '../common/moderation.service';
 import { RateLimitService } from '../common/security/rate-limit.service';
+import { COMMUNITY_RULES_VERSION } from '../common/community-safety.constants';
+import { createSafeMarkdownRenderer } from '../common/safe-markdown';
 
 type ApiAuthor =
   | { type: 'anonymous'; pseudonym: { displayName: string; color: string; isOp: boolean } }
   | { type: 'user'; user: { id: string; username: string; avatarUrl: string | null } };
+
+type QuotedPostPreview = {
+  id: string;
+  title: string;
+  contentExcerpt: string;
+  board: { slug: string; name: string };
+};
+
+type ReportTargetInput =
+  | 'post'
+  | 'comment'
+  | 'user'
+  | 'conversation'
+  | 'direct_message'
+  | 'chatroom_message';
 
 export interface CommentItem {
   id: string;
@@ -27,6 +43,7 @@ export interface CommentItem {
   downvotes: number;
   score: number;
   isDeleted: boolean;
+  status: ContentStatus;
   depth: number;
   createdAt: string;
   replies?: CommentItem[];
@@ -34,7 +51,7 @@ export interface CommentItem {
 
 @Injectable()
 export class ContentService {
-  private readonly markdown = new MarkdownIt({ html: false, linkify: true, breaks: true });
+  private readonly markdown = createSafeMarkdownRenderer();
 
   constructor(
     private readonly prisma: PrismaService,
@@ -49,6 +66,7 @@ export class ContentService {
     cursor?: string;
     q?: string;
     limit?: string;
+    userId?: bigint;
   }) {
     const { boardSlug, sort = 'hot', cursor } = opts;
     const requestedLimit = Number.parseInt(opts.limit ?? '', 10);
@@ -64,7 +82,9 @@ export class ContentService {
     if (cursor) {
       try {
         cursorId = BigInt(cursor);
-        if (cursorId <= 0n) throw new Error('invalid cursor');
+        if (cursorId <= 0n) {
+          throw new Error('invalid cursor');
+        }
       } catch {
         throw new BadRequestException('分页游标无效');
       }
@@ -119,11 +139,36 @@ export class ContentService {
         createdAt: true,
         board: { select: { slug: true, name: true, icon: true } },
         author: { select: { id: true, username: true, avatarUrl: true } },
+        quotedPost: {
+          select: {
+            id: true,
+            title: true,
+            contentMd: true,
+            status: true,
+            board: { select: { slug: true, name: true } },
+          },
+        },
       },
     });
 
     const hasMore = posts.length > pageSize;
     const items = posts.slice(0, pageSize);
+    const likedPostIds =
+      opts.userId && items.length > 0
+        ? new Set(
+            (
+              await this.prisma.vote.findMany({
+                where: {
+                  userId: opts.userId,
+                  targetType: 'post',
+                  targetId: { in: items.map((post) => post.id) },
+                  value: 1,
+                },
+                select: { targetId: true },
+              })
+            ).map((vote) => String(vote.targetId)),
+          )
+        : new Set<string>();
 
     return {
       items: items.map((p) => {
@@ -147,15 +192,17 @@ export class ContentService {
                   username: p.author.username,
                   avatarUrl: p.author.avatarUrl,
                 },
-          },
+              },
           title: p.title,
-          contentExcerpt: (p.contentMd ?? '').slice(0, 200),
+          contentExcerpt: this.contentExcerpt(p.contentMd),
           imageUrls,
           thumbnailUrl: imageUrls[0],
           hasImages: imageUrls.length > 0,
+          quotedPost: this.quotedPostPreview(p.quotedPost),
           upvotes: p.upvotes,
           downvotes: p.downvotes,
           score: p.score,
+          myVote: likedPostIds.has(String(p.id)) ? 1 : 0,
           commentCount: p.commentCount,
           isLocked: p.isLocked,
           isPinned: p.isPinned,
@@ -166,12 +213,21 @@ export class ContentService {
     };
   }
 
-  async getPost(id: string) {
+  async getPost(id: string, userId?: bigint) {
     const post = await this.prisma.post.findFirst({
       where: { id: BigInt(id), status: 'published' },
       include: {
         board: true,
         author: { select: { id: true, username: true, avatarUrl: true } },
+        quotedPost: {
+          select: {
+            id: true,
+            title: true,
+            contentMd: true,
+            status: true,
+            board: { select: { slug: true, name: true } },
+          },
+        },
       },
     });
     if (!post) {
@@ -179,6 +235,14 @@ export class ContentService {
     }
 
     const imageUrls = this.extractImageUrls(post.contentMd);
+    const liked = userId
+      ? await this.prisma.vote.findUnique({
+          where: {
+            userId_targetType_targetId: { userId, targetType: 'post', targetId: post.id },
+          },
+          select: { value: true },
+        })
+      : null;
 
     return {
       id: String(post.id),
@@ -201,14 +265,16 @@ export class ContentService {
             },
           },
       title: post.title,
-      contentMd: post.contentMd,
-      contentHtml: post.contentHtml,
+      contentMd: this.normalizeImageUrls(post.contentMd),
+      contentHtml: this.normalizeImageUrls(post.contentHtml),
       imageUrls,
       thumbnailUrl: imageUrls[0],
       hasImages: imageUrls.length > 0,
+      quotedPost: this.quotedPostPreview(post.quotedPost),
       upvotes: post.upvotes,
       downvotes: post.downvotes,
       score: post.score,
+      myVote: liked?.value === 1 ? 1 : 0,
       commentCount: post.commentCount,
       isLocked: post.isLocked,
       isPinned: post.isPinned,
@@ -222,10 +288,20 @@ export class ContentService {
     boardSlug: string;
     isAnonymous?: boolean;
     imageUrls?: string[];
+    quotedPostId?: string;
     authorId: bigint;
+    rulesAcknowledged?: boolean;
+    authorIp?: string;
+    authorUserAgent?: string;
   }) {
     await this.rateLimit.consume('create-post-user', String(data.authorId), 10, 10 * 60);
     const { boardSlug } = data;
+    if (data.rulesAcknowledged !== true) {
+      throw new BadRequestException({
+        code: 'RULES_ACKNOWLEDGEMENT_REQUIRED',
+        message: '请先确认已阅读并遵守社区规则',
+      });
+    }
     if (!boardSlug) {
       throw new BadRequestException('请选择板块');
     }
@@ -256,6 +332,15 @@ export class ContentService {
     if (user.status === 'suspended' && (!user.suspendedUntil || user.suspendedUntil > new Date())) {
       throw new ForbiddenException('账号正在禁言中，不能发帖');
     }
+    if (Date.now() - user.createdAt.getTime() < 7 * 24 * 60 * 60 * 1000) {
+      await this.rateLimit.consume(
+        'create-post-new-user',
+        String(data.authorId),
+        3,
+        3600,
+        '新用户保护期内每小时最多发布 3 个帖子',
+      );
+    }
 
     const board = await this.prisma.board.findUnique({
       where: { slug: boardSlug },
@@ -264,21 +349,53 @@ export class ContentService {
       throw new BadRequestException('板块不存在');
     }
 
-    // 检查匿名权限
-    if (data.isAnonymous && !board.allowsAnonymous) {
-      throw new BadRequestException('该板块不允许匿名发帖');
+    const isAnonymous = true;
+    const quotedPostId = data.quotedPostId ? this.parseId(data.quotedPostId) : undefined;
+    if (quotedPostId) {
+      const quotedPost = await this.prisma.post.findFirst({
+        where: { id: quotedPostId, status: 'published' },
+        select: { id: true },
+      });
+      if (!quotedPost) {
+        throw new BadRequestException('引用的帖子不存在或已不可见');
+      }
     }
-    const isAnonymous = board.allowsAnonymous && data.isAnonymous !== false;
 
-    const safeImageUrls = await this.validatePostImageUrls(data.imageUrls, data.authorId);
-    const moderatedTitle = await this.moderation.moderateOrThrow(title);
-    const moderatedBody = await this.moderation.moderateOrThrow(contentBody);
+    const imageValidation = await this.validatePostImageUrls(data.imageUrls, data.authorId);
+    const safeImageUrls = imageValidation.urls;
+    const moderationContext = {
+      surface: 'post' as const,
+      authorId: data.authorId,
+      ip: data.authorIp,
+      userAgent: data.authorUserAgent,
+    };
+    const moderatedTitle = await this.moderation.moderateOrThrow(title, moderationContext);
+    const moderatedBody = await this.moderation.moderateOrThrow(contentBody, moderationContext);
     const contentMd = this.appendImageMarkdown(moderatedBody.content, safeImageUrls);
     const contentHtml = this.renderMd(contentMd);
     const status: ContentStatus =
-      moderatedTitle.status === 'pending_review' || moderatedBody.status === 'pending_review'
+      moderatedTitle.status === 'pending_review' ||
+      moderatedBody.status === 'pending_review' ||
+      imageValidation.hasPending
         ? 'pending_review'
         : 'published';
+    let highestRisk =
+      moderatedTitle.riskLevel >= moderatedBody.riskLevel ? moderatedTitle : moderatedBody;
+    const combinedContent = `${title}\n${contentBody}`;
+    const combinedHash = createHash('sha256').update(combinedContent).digest('hex');
+    const moderationLabels = {
+      title: this.moderation.moderationLabels(moderatedTitle),
+      body: this.moderation.moderationLabels(moderatedBody),
+      imagePending: imageValidation.hasPending,
+    } as unknown as Prisma.InputJsonValue;
+    if (imageValidation.hasPending && highestRisk.status !== 'pending_review') {
+      highestRisk = {
+        ...highestRisk,
+        status: 'pending_review',
+        riskLevel: 2,
+        reasonCodes: [...highestRisk.reasonCodes, 'image_pending_review'],
+      };
+    }
 
     const createdAt = new Date();
     const post = await this.prisma.$transaction(async (tx) => {
@@ -286,14 +403,20 @@ export class ContentService {
         data: {
           boardId: board.id,
           authorId: data.authorId,
+          quotedPostId,
           title: moderatedTitle.content,
           contentMd,
           contentHtml,
           isAnonymous,
           status,
-          upvotes: 1,
-          score: 1,
-          hotScore: this.hotScoreFor(1, createdAt),
+          moderationLabels,
+          contentHash: combinedHash,
+          legalHold: status === 'pending_review' && highestRisk.riskLevel >= 4,
+          authorIp: data.authorIp && data.authorIp !== 'unknown' ? data.authorIp : null,
+          authorUserAgent: data.authorUserAgent?.slice(0, 512),
+          upvotes: 0,
+          score: 0,
+          hotScore: this.hotScoreFor(0, createdAt),
           createdAt,
         },
         include: {
@@ -301,16 +424,35 @@ export class ContentService {
           author: { select: { id: true, username: true, avatarUrl: true } },
         },
       });
-      await tx.vote.create({
+      await tx.policyAcceptance.create({
         data: {
           userId: data.authorId,
-          targetType: 'post',
-          targetId: created.id,
-          value: 1,
+          policyVersion: COMMUNITY_RULES_VERSION,
+          source: 'publish',
+          ip: data.authorIp && data.authorIp !== 'unknown' ? data.authorIp : null,
+          userAgent: data.authorUserAgent?.slice(0, 512),
         },
       });
       return created;
     });
+
+    if (status === 'pending_review') {
+      await this.moderation.recordCase(
+        { ...highestRisk, contentHash: combinedHash },
+        moderationContext,
+        post.id,
+        combinedContent,
+      );
+    }
+    if (safeImageUrls.length > 0) {
+      await this.prisma.upload.updateMany({
+        where: {
+          userId: data.authorId,
+          s3Key: { in: safeImageUrls.map((url) => this.cdnUploadKey(url, 'posts')) },
+        },
+        data: { attachedToType: 'post', attachedToId: post.id },
+      });
+    }
 
     const imageUrls = this.extractImageUrls(post.contentMd);
 
@@ -336,8 +478,8 @@ export class ContentService {
           },
       title: post.title,
       contentExcerpt: contentBody.slice(0, 200),
-      contentMd: post.contentMd,
-      contentHtml: post.contentHtml,
+      contentMd: this.normalizeImageUrls(post.contentMd),
+      contentHtml: this.normalizeImageUrls(post.contentHtml),
       imageUrls,
       thumbnailUrl: imageUrls[0],
       hasImages: imageUrls.length > 0,
@@ -347,6 +489,7 @@ export class ContentService {
       commentCount: 0,
       isLocked: false,
       isPinned: false,
+      status,
       createdAt: post.createdAt.toISOString(),
     };
   }
@@ -357,9 +500,27 @@ export class ContentService {
     parentId?: string;
     isAnonymous: boolean;
     authorId: bigint;
+    rulesAcknowledged?: boolean;
+    authorIp?: string;
+    authorUserAgent?: string;
   }): Promise<CommentItem> {
     await this.rateLimit.consume('create-comment-user', String(data.authorId), 30, 60);
     const author = await this.getActiveAuthor(data.authorId);
+    if (data.rulesAcknowledged !== true) {
+      throw new BadRequestException({
+        code: 'RULES_ACKNOWLEDGEMENT_REQUIRED',
+        message: '请先确认已阅读并遵守社区规则',
+      });
+    }
+    if (Date.now() - author.createdAt.getTime() < 7 * 24 * 60 * 60 * 1000) {
+      await this.rateLimit.consume(
+        'create-comment-new-user',
+        String(data.authorId),
+        10,
+        10 * 60,
+        '新用户保护期内评论过于频繁，请稍后再试',
+      );
+    }
     const post = await this.prisma.post.findFirst({
       where: { id: this.parseId(data.postId), status: 'published' },
       include: { board: { select: { allowsAnonymous: true } } },
@@ -390,8 +551,14 @@ export class ContentService {
     if (this.containsMarkdownImage(contentBody)) {
       throw new BadRequestException('评论不支持外部图片');
     }
-    const moderated = await this.moderation.moderateOrThrow(contentBody);
-    const isAnonymous = post.board.allowsAnonymous && data.isAnonymous;
+    const moderationContext = {
+      surface: 'comment' as const,
+      authorId: data.authorId,
+      ip: data.authorIp,
+      userAgent: data.authorUserAgent,
+    };
+    const moderated = await this.moderation.moderateOrThrow(contentBody, moderationContext);
+    const isAnonymous = true;
 
     const comment = await this.prisma.$transaction(async (tx) => {
       const created = await tx.comment.create({
@@ -404,15 +571,24 @@ export class ContentService {
           contentHtml: this.renderMd(moderated.content),
           isAnonymous,
           status: moderated.status,
+          moderationLabels: this.moderation.moderationLabels(
+            moderated,
+          ) as unknown as Prisma.InputJsonValue,
+          contentHash: moderated.contentHash,
+          legalHold: moderated.status === 'pending_review' && moderated.riskLevel >= 4,
+          authorIp: data.authorIp && data.authorIp !== 'unknown' ? data.authorIp : null,
+          authorUserAgent: data.authorUserAgent?.slice(0, 512),
         },
         include: {
           author: { select: { id: true, username: true, avatarUrl: true } },
         },
       });
-      await tx.post.update({
-        where: { id: post.id },
-        data: { commentCount: { increment: 1 } },
-      });
+      if (moderated.status === 'published') {
+        await tx.post.update({
+          where: { id: post.id },
+          data: { commentCount: { increment: 1 } },
+        });
+      }
       const recipientId = parent?.authorId ?? post.authorId;
       if (moderated.status === 'published' && recipientId !== author.id) {
         await tx.notification.create({
@@ -431,8 +607,21 @@ export class ContentService {
           },
         });
       }
+      await tx.policyAcceptance.create({
+        data: {
+          userId: data.authorId,
+          policyVersion: COMMUNITY_RULES_VERSION,
+          source: 'publish',
+          ip: data.authorIp && data.authorIp !== 'unknown' ? data.authorIp : null,
+          userAgent: data.authorUserAgent?.slice(0, 512),
+        },
+      });
       return created;
     });
+
+    if (moderated.status === 'pending_review') {
+      await this.moderation.recordCase(moderated, moderationContext, comment.id, contentBody);
+    }
 
     return this.toCommentItem(comment);
   }
@@ -530,6 +719,9 @@ export class ContentService {
     if (value !== -1 && value !== 0 && value !== 1) {
       throw new BadRequestException('无效投票值');
     }
+    if (targetType === 'post' && value === -1) {
+      throw new BadRequestException('帖子仅支持点赞或取消点赞');
+    }
     const user = await this.getActiveAuthor(userId);
     const id = this.parseId(targetId);
     if (targetType === 'post') {
@@ -562,7 +754,8 @@ export class ContentService {
         _count: { _all: true },
       });
       const upvotes = grouped.find((group) => group.value === 1)?._count._all ?? 0;
-      const downvotes = grouped.find((group) => group.value === -1)?._count._all ?? 0;
+      const downvotes =
+        targetType === 'post' ? 0 : (grouped.find((group) => group.value === -1)?._count._all ?? 0);
       const score = upvotes - downvotes;
 
       if (targetType === 'post') {
@@ -593,13 +786,18 @@ export class ContentService {
 
   async reportTarget(data: {
     reporterId: bigint;
-    targetType: 'post' | 'comment' | 'user';
+    targetType: ReportTargetInput;
     targetId: string;
     category: 'illegal' | 'porn' | 'ad' | 'harassment' | 'other';
     reason?: string;
+    evidenceMessageIds?: string[];
   }) {
     await this.rateLimit.consume('report-user', String(data.reporterId), 10, 3600);
-    if (!['post', 'comment', 'user'].includes(data.targetType)) {
+    if (
+      !['post', 'comment', 'user', 'conversation', 'direct_message', 'chatroom_message'].includes(
+        data.targetType,
+      )
+    ) {
       throw new BadRequestException('无效的举报目标');
     }
     if (!['illegal', 'porn', 'ad', 'harassment', 'other'].includes(data.category)) {
@@ -610,30 +808,57 @@ export class ContentService {
     }
     const reporter = await this.getActiveAuthor(data.reporterId);
     const targetId = this.parseId(data.targetId);
-    await this.ensureReportTargetExists(data.targetType, targetId);
+    if (data.evidenceMessageIds && data.evidenceMessageIds.length > 20) {
+      throw new BadRequestException('一次最多选择 20 条证据消息');
+    }
+    const evidence = await this.buildReportEvidence(
+      data.targetType,
+      targetId,
+      reporter.id,
+      data.evidenceMessageIds,
+    );
+    const priority = { illegal: 100, porn: 90, harassment: 60, ad: 40, other: 20 }[data.category];
 
-    const existing = await this.prisma.report.findFirst({
-      where: {
-        reporterId: reporter.id,
-        targetType: data.targetType,
-        targetId,
-        status: 'open',
-      },
-    });
-    if (existing) {
-      throw new BadRequestException('你已经举报过该内容，请等待处理');
+    try {
+      await this.prisma.$transaction(async (tx) => {
+        await tx.report.create({
+          data: {
+            reporterId: reporter.id,
+            targetType: data.targetType,
+            targetId,
+            category: data.category,
+            reason: data.reason?.trim() || null,
+            status: 'open',
+            priority,
+            evidenceSnapshot: evidence.snapshot,
+            contentHash: evidence.contentHash,
+            legalHold: data.category === 'illegal' || data.category === 'porn',
+          },
+        });
+        if (data.category === 'illegal' || data.category === 'porn') {
+          await this.applyEvidenceHold(tx, data.targetType, targetId, evidence.messageIds);
+        }
+      });
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+        throw new BadRequestException('你已经举报过该内容，请等待处理');
+      }
+      throw error;
     }
 
-    await this.prisma.report.create({
-      data: {
-        reporterId: reporter.id,
-        targetType: data.targetType,
-        targetId,
-        category: data.category,
-        reason: data.reason?.trim() || null,
-        status: 'open',
-      },
-    });
+    if (data.category === 'illegal' || data.category === 'porn') {
+      const highSeverityReports = await this.prisma.report.count({
+        where: {
+          targetType: data.targetType,
+          targetId,
+          status: 'open',
+          category: { in: ['illegal', 'porn'] },
+        },
+      });
+      if (highSeverityReports >= 3) {
+        await this.quarantineReportedTarget(data.targetType, targetId);
+      }
+    }
 
     return { ok: true };
   }
@@ -660,7 +885,51 @@ export class ContentService {
   }
 
   private extractImageUrls(contentMd: string): string[] {
-    return [...contentMd.matchAll(/!\[[^\]]*]\(([^)]+)\)/g)].map((match) => match[1]);
+    return [...contentMd.matchAll(/!\[[^\]]*]\(([^)]+)\)/g)].map((match) =>
+      this.publicImageUrl(match[1]),
+    );
+  }
+
+  private contentExcerpt(contentMd: string): string {
+    return contentMd
+      .replace(/!\[[^\]]*]\([^)]+\)/g, '')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .slice(0, 200);
+  }
+
+  private quotedPostPreview(
+    post: {
+      id: bigint;
+      title: string;
+      contentMd: string;
+      status: ContentStatus;
+      board: { slug: string; name: string };
+    } | null,
+  ): QuotedPostPreview | undefined {
+    if (!post || post.status !== 'published') {
+      return undefined;
+    }
+    return {
+      id: String(post.id),
+      title: post.title,
+      contentExcerpt: this.contentExcerpt(post.contentMd).slice(0, 120),
+      board: post.board,
+    };
+  }
+
+  private normalizeImageUrls(content: string): string {
+    return content.replace(
+      /https?:\/\/[^\s"')]+\/(posts|registrations|chatrooms)\/([A-Za-z0-9_-]+\.(?:jpg|png))/g,
+      (_match, folder: string, filename: string) => `/api/v1/uploads/public/${folder}/${filename}`,
+    );
+  }
+
+  private publicImageUrl(value: string): string {
+    const match = value.match(
+      /\/(posts|registrations|chatrooms)\/([A-Za-z0-9_-]+\.(?:jpg|png))(?:[?#].*)?$/,
+    );
+    return match ? `/api/v1/uploads/public/${match[1]}/${match[2]}` : value;
   }
 
   private containsMarkdownImage(content: string): boolean {
@@ -670,9 +939,9 @@ export class ContentService {
   private async validatePostImageUrls(
     imageUrls: string[] | undefined,
     userId: bigint,
-  ): Promise<string[]> {
+  ): Promise<{ urls: string[]; hasPending: boolean }> {
     if (imageUrls === undefined) {
-      return [];
+      return { urls: [], hasPending: false };
     }
     if (!Array.isArray(imageUrls) || imageUrls.length > 4) {
       throw new BadRequestException('每个帖子最多上传 4 张图片');
@@ -682,19 +951,23 @@ export class ContentService {
     if (new Set(keys).size !== keys.length) {
       throw new BadRequestException('图片不能重复');
     }
-    const owned = await this.prisma.upload.count({
+    const owned = await this.prisma.upload.findMany({
       where: {
         userId,
         s3Key: { in: keys },
-        moderationStatus: 'passed',
+        moderationStatus: { in: ['passed', 'pending'] },
       },
+      select: { s3Key: true, moderationStatus: true },
     });
-    if (owned !== keys.length) {
-      throw new BadRequestException('图片不存在或不属于当前用户');
+    if (owned.length !== keys.length) {
+      throw new BadRequestException('图片不存在、不属于当前用户或已被驳回');
     }
 
     const base = this.config.get('CDN_BASE_URL').replace(/\/+$/, '');
-    return keys.map((key) => `${base}/${key}`);
+    return {
+      urls: keys.map((key) => `${base}/${key}`),
+      hasPending: owned.some((upload) => upload.moderationStatus === 'pending'),
+    };
   }
 
   private cdnUploadKey(value: unknown, folder: 'posts'): string {
@@ -738,26 +1011,244 @@ export class ContentService {
     return user;
   }
 
-  private async ensureReportTargetExists(targetType: 'post' | 'comment' | 'user', id: bigint) {
+  private async buildReportEvidence(
+    targetType: ReportTargetInput,
+    id: bigint,
+    reporterId: bigint,
+    evidenceMessageIds?: string[],
+  ): Promise<{ snapshot: Prisma.InputJsonValue; contentHash: string; messageIds: bigint[] }> {
+    let snapshot: Record<string, unknown>;
+    let rawContent = '';
+    let messageIds: bigint[] = [];
+
     if (targetType === 'post') {
-      const post = await this.prisma.post.findFirst({ where: { id, status: { not: 'deleted' } } });
+      const post = await this.prisma.post.findFirst({
+        where: { id, status: { not: 'deleted' } },
+        select: { id: true, title: true, contentMd: true, createdAt: true, boardId: true },
+      });
       if (!post) {
         throw new NotFoundException('举报目标不存在');
       }
-      return;
-    }
-    if (targetType === 'comment') {
+      rawContent = `${post.title}\n${post.contentMd}`;
+      snapshot = {
+        type: 'post',
+        id: String(post.id),
+        title: post.title,
+        content: post.contentMd.slice(0, 5000),
+        boardId: String(post.boardId),
+        createdAt: post.createdAt.toISOString(),
+      };
+    } else if (targetType === 'comment') {
       const comment = await this.prisma.comment.findFirst({
         where: { id, status: { not: 'deleted' } },
+        select: { id: true, postId: true, contentMd: true, createdAt: true },
       });
       if (!comment) {
         throw new NotFoundException('举报目标不存在');
       }
-      return;
+      rawContent = comment.contentMd;
+      snapshot = {
+        type: 'comment',
+        id: String(comment.id),
+        postId: String(comment.postId),
+        content: comment.contentMd.slice(0, 5000),
+        createdAt: comment.createdAt.toISOString(),
+      };
+    } else if (targetType === 'user') {
+      if (id === reporterId) {
+        throw new BadRequestException('不能举报自己');
+      }
+      const user = await this.prisma.user.findUnique({
+        where: { id },
+        select: { id: true, username: true, createdAt: true },
+      });
+      if (!user) {
+        throw new NotFoundException('举报目标不存在');
+      }
+      rawContent = user.username;
+      snapshot = {
+        type: 'user',
+        id: String(user.id),
+        username: user.username,
+        createdAt: user.createdAt.toISOString(),
+      };
+    } else if (targetType === 'conversation') {
+      const conversation = await this.prisma.conversation.findFirst({
+        where: {
+          id,
+          OR: [{ initiatorId: reporterId }, { recipientId: reporterId }],
+        },
+        select: {
+          id: true,
+          initiatorId: true,
+          recipientId: true,
+          status: true,
+          createdAt: true,
+        },
+      });
+      if (!conversation) {
+        throw new NotFoundException('举报目标不存在');
+      }
+      const selectedIds = (evidenceMessageIds ?? []).map((value) => this.parseId(value));
+      const messages = await this.prisma.directMessage.findMany({
+        where: {
+          conversationId: conversation.id,
+          senderId: { not: reporterId },
+          // Only messages that were actually delivered to the reporter may be
+          // used as evidence. Pending messages are intentionally sender-only.
+          status: 'published',
+          ...(selectedIds.length ? { id: { in: selectedIds } } : {}),
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 20,
+        select: { id: true, senderId: true, contentMd: true, createdAt: true },
+      });
+      if (messages.length === 0) {
+        throw new BadRequestException('没有可举报的对方消息');
+      }
+      messageIds = messages.map((message) => message.id);
+      rawContent = messages.map((message) => message.contentMd).join('\n');
+      snapshot = {
+        type: 'conversation',
+        id: String(conversation.id),
+        accusedUserId: String(
+          conversation.initiatorId === reporterId
+            ? conversation.recipientId
+            : conversation.initiatorId,
+        ),
+        status: conversation.status,
+        messages: messages.reverse().map((message) => ({
+          id: String(message.id),
+          content: message.contentMd.slice(0, 2000),
+          createdAt: message.createdAt.toISOString(),
+        })),
+        createdAt: conversation.createdAt.toISOString(),
+      };
+    } else if (targetType === 'direct_message') {
+      const message = await this.prisma.directMessage.findFirst({
+        where: {
+          id,
+          senderId: { not: reporterId },
+          status: 'published',
+          conversation: { OR: [{ initiatorId: reporterId }, { recipientId: reporterId }] },
+        },
+        select: {
+          id: true,
+          conversationId: true,
+          senderId: true,
+          contentMd: true,
+          createdAt: true,
+        },
+      });
+      if (!message) {
+        throw new NotFoundException('举报目标不存在');
+      }
+      messageIds = [message.id];
+      rawContent = message.contentMd;
+      snapshot = {
+        type: 'direct_message',
+        id: String(message.id),
+        conversationId: String(message.conversationId),
+        accusedUserId: String(message.senderId),
+        content: message.contentMd.slice(0, 2000),
+        createdAt: message.createdAt.toISOString(),
+      };
+    } else {
+      const message = await this.prisma.chatroomMessage.findFirst({
+        where: { id, status: 'published' },
+        select: { id: true, chatroomId: true, senderId: true, content: true, createdAt: true },
+      });
+      if (!message) {
+        throw new NotFoundException('举报目标不存在');
+      }
+      if (message.senderId === reporterId) {
+        throw new BadRequestException('不能举报自己的消息');
+      }
+      messageIds = [message.id];
+      rawContent = message.content;
+      snapshot = {
+        type: 'chatroom_message',
+        id: String(message.id),
+        chatroomId: String(message.chatroomId),
+        accusedUserId: String(message.senderId),
+        content: message.content.slice(0, 2000),
+        createdAt: message.createdAt.toISOString(),
+      };
     }
-    const user = await this.prisma.user.findUnique({ where: { id } });
-    if (!user) {
-      throw new NotFoundException('举报目标不存在');
+
+    return {
+      snapshot: snapshot as Prisma.InputJsonValue,
+      contentHash: createHash('sha256').update(rawContent).digest('hex'),
+      messageIds,
+    };
+  }
+
+  private async applyEvidenceHold(
+    tx: Prisma.TransactionClient,
+    targetType: ReportTargetInput,
+    targetId: bigint,
+    messageIds: bigint[],
+  ) {
+    if (targetType === 'post') {
+      await tx.post.update({ where: { id: targetId }, data: { legalHold: true } });
+    } else if (targetType === 'comment') {
+      await tx.comment.update({ where: { id: targetId }, data: { legalHold: true } });
+    } else if (targetType === 'direct_message' || targetType === 'conversation') {
+      await tx.directMessage.updateMany({
+        where: { id: { in: messageIds } },
+        data: { legalHold: true },
+      });
+    } else if (targetType === 'chatroom_message') {
+      const message = await tx.chatroomMessage.update({
+        where: { id: targetId },
+        data: { legalHold: true },
+        select: { chatroomId: true },
+      });
+      await tx.chatroom.update({ where: { id: message.chatroomId }, data: { legalHold: true } });
+    }
+  }
+
+  private async quarantineReportedTarget(targetType: ReportTargetInput, targetId: bigint) {
+    if (targetType === 'post') {
+      await this.prisma.post.updateMany({
+        where: { id: targetId, status: 'published' },
+        data: { status: 'pending_review', legalHold: true },
+      });
+    } else if (targetType === 'comment') {
+      await this.prisma.$transaction(async (tx) => {
+        const comment = await tx.comment.findUnique({
+          where: { id: targetId },
+          select: { postId: true },
+        });
+        if (!comment) {
+          return;
+        }
+        const quarantined = await tx.comment.updateMany({
+          where: { id: targetId, status: 'published' },
+          data: { status: 'pending_review', legalHold: true },
+        });
+        if (quarantined.count === 1) {
+          await tx.post.updateMany({
+            where: { id: comment.postId, commentCount: { gt: 0 } },
+            data: { commentCount: { decrement: 1 } },
+          });
+        }
+      });
+    } else if (targetType === 'direct_message') {
+      await this.prisma.directMessage.updateMany({
+        where: { id: targetId, status: 'published' },
+        data: { status: 'pending_review', legalHold: true },
+      });
+    } else if (targetType === 'conversation') {
+      await this.prisma.conversation.update({
+        where: { id: targetId },
+        data: { status: 'blocked' },
+      });
+    } else if (targetType === 'chatroom_message') {
+      await this.prisma.chatroomMessage.updateMany({
+        where: { id: targetId, status: 'published' },
+        data: { status: 'pending_review', isFlagged: true, legalHold: true },
+      });
     }
   }
 
@@ -799,6 +1290,7 @@ export class ContentService {
       downvotes: comment.downvotes,
       score: comment.score,
       isDeleted: comment.status === 'deleted',
+      status: comment.status,
       depth: comment.depth,
       createdAt: comment.createdAt.toISOString(),
     };
@@ -812,29 +1304,10 @@ export class ContentService {
     }
   }
 
-  private pseudonymFor(postId: bigint, userId: bigint, isOp: boolean) {
-    const words = [
-      '晨曦',
-      '松风',
-      '海盐',
-      '星河',
-      '青柚',
-      '云朵',
-      '山茶',
-      '微光',
-      '竹影',
-      '月白',
-      '橙子',
-      '南风',
-    ];
-    const digest = createHmac('sha256', this.config.get('ANON_SECRET'))
-      .update(`${postId}:${userId}`)
-      .digest();
-    const name = words[digest[0] % words.length];
-    const hue = digest[1] % 360;
+  private pseudonymFor(_postId: bigint, _userId: bigint, isOp: boolean) {
     return {
-      displayName: isOp ? `楼主 · ${name}` : `匿名 · ${name}`,
-      color: `hsl(${hue} 65% 52%)`,
+      displayName: '浙小商',
+      color: 'hsl(24 90% 52%)',
       isOp,
     };
   }

@@ -14,6 +14,7 @@ const USER_ROLE: Record<UserRole, { label: string; variant: 'muted' | 'warning' 
   user: { label: '用户', variant: 'muted' },
   moderator: { label: '版主', variant: 'warning' },
   admin: { label: '管理员', variant: 'default' },
+  superadmin: { label: '超级管理员', variant: 'default' },
 };
 
 const CONTENT_STATUS: Record<

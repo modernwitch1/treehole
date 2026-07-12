@@ -12,6 +12,7 @@ import { AppConfig } from '../config/app.config';
 import { RedisService } from '../redis/redis.module';
 import { MailService } from './mail.service';
 import { RateLimitService } from '../common/security/rate-limit.service';
+import { COMMUNITY_RULES_VERSION } from '../common/community-safety.constants';
 
 @Injectable()
 export class AuthService {
@@ -35,8 +36,12 @@ export class AuthService {
       realName?: string;
       method: 'email' | 'screenshot';
       screenshotUrl?: string;
+      acceptTerms: boolean;
+      acceptCommunityRules: boolean;
+      policyVersion: string;
     },
     ip = 'unknown',
+    userAgent?: string,
   ) {
     const studentId = data.studentId.trim();
     const email =
@@ -46,6 +51,13 @@ export class AuthService {
     const realName = data.realName?.trim();
 
     await this.rateLimit.consume('register-ip', ip, 5, 3600);
+
+    if (!data.acceptTerms || !data.acceptCommunityRules) {
+      throw new BadRequestException('请先阅读并同意用户协议、隐私政策和社区规则');
+    }
+    if (data.policyVersion !== COMMUNITY_RULES_VERSION) {
+      throw new BadRequestException('社区规则已更新，请刷新页面后重新阅读');
+    }
 
     if (!studentId) {
       throw new BadRequestException('请填写学号');
@@ -99,6 +111,10 @@ export class AuthService {
         method: data.method,
         screenshotUrl: data.screenshotUrl,
         verificationCode,
+        policyVersion: COMMUNITY_RULES_VERSION,
+        policyAcceptedAt: new Date(),
+        policyAcceptedIp: ip === 'unknown' ? null : ip,
+        policyAcceptedUserAgent: userAgent?.slice(0, 512),
         status: 'pending',
         expiresAt,
       },
@@ -128,7 +144,7 @@ export class AuthService {
     };
   }
 
-  async verifyEmailCode(studentId: string, code: string, ip = 'unknown') {
+  async verifyEmailCode(studentId: string, code: string, ip = 'unknown', userAgent?: string) {
     const normalizedStudentId = studentId.trim();
     await Promise.all([
       this.rateLimit.consume('verify-email-ip', ip, 30, 15 * 60),
@@ -159,7 +175,7 @@ export class AuthService {
       return { ok: false, message: '验证码错误' };
     }
 
-    await this.activateUser(request);
+    await this.activateUser(request, ip, userAgent);
     return { ok: true };
   }
 
@@ -191,8 +207,12 @@ export class AuthService {
     if (request.status === 'approved' && (!approvedUser || approvedUser.deletedAt)) {
       throw new UnauthorizedException('账号不存在或不可用');
     }
+    const credentialHash = approvedUser?.passwordHash ?? request.passwordHash;
+    if (!credentialHash) {
+      throw new UnauthorizedException('注册凭据已失效，请重新注册');
+    }
     const { verify } = await import('argon2');
-    const passwordValid = await verify(approvedUser?.passwordHash ?? request.passwordHash, password);
+    const passwordValid = await verify(credentialHash, password);
     if (!passwordValid) {
       throw new UnauthorizedException('学号或密码错误');
     }
@@ -231,12 +251,7 @@ export class AuthService {
     const normalizedStudentId = studentId.trim();
     await Promise.all([
       this.rateLimit.consume('login-ip', ip ?? 'unknown', 40, 15 * 60),
-      this.rateLimit.consume(
-        'login-account',
-        normalizedStudentId.toLowerCase(),
-        12,
-        15 * 60,
-      ),
+      this.rateLimit.consume('login-account', normalizedStudentId.toLowerCase(), 12, 15 * 60),
     ]);
     const request = await this.prisma.registrationRequest.findUnique({
       where: { studentId: normalizedStudentId },
@@ -255,8 +270,12 @@ export class AuthService {
     if (request.status === 'approved' && (!approvedUser || approvedUser.deletedAt)) {
       throw new UnauthorizedException('账号不存在或不可用');
     }
+    const credentialHash = approvedUser?.passwordHash ?? request.passwordHash;
+    if (!credentialHash) {
+      throw new UnauthorizedException('注册凭据已失效，请重新注册');
+    }
     const { verify } = await import('argon2');
-    const passwordValid = await verify(approvedUser?.passwordHash ?? request.passwordHash, password);
+    const passwordValid = await verify(credentialHash, password);
     if (!passwordValid) {
       throw new UnauthorizedException('学号或密码错误');
     }
@@ -276,9 +295,30 @@ export class AuthService {
       };
     }
 
-    const user = approvedUser!;
+    if (!approvedUser) {
+      throw new UnauthorizedException('账号不存在或不可用');
+    }
+    const user = approvedUser;
     if (user.status === 'banned') {
-      throw new UnauthorizedException('账号已被封禁');
+      const appealSessionId = randomUUID();
+      await this.redis.client.set(
+        `appeal-session:${appealSessionId}`,
+        String(user.id),
+        'EX',
+        30 * 60,
+      );
+      return {
+        status: 'banned' as const,
+        message: '账号已被封禁，你仍可查看处罚记录并提交申诉',
+        appealToken: this.jwt.sign(
+          { sub: String(user.id), type: 'appeal', jti: appealSessionId },
+          {
+            expiresIn: '30m',
+            issuer: 'zjgsu-treehole',
+            audience: 'forum-appeal',
+          },
+        ),
+      };
     }
 
     await this.prisma.user.update({
@@ -452,13 +492,28 @@ export class AuthService {
     return { ok: true };
   }
 
-  private async activateUser(request: {
-    id: bigint;
-    email: string;
-    username: string;
-    passwordHash: string;
-  }) {
+  private async activateUser(
+    request: {
+      id: bigint;
+      email: string;
+      username: string;
+      passwordHash: string | null;
+      policyVersion: string | null;
+      policyAcceptedAt: Date | null;
+      policyAcceptedIp: string | null;
+      policyAcceptedUserAgent: string | null;
+    },
+    ip = 'unknown',
+    userAgent?: string,
+  ) {
     await this.prisma.$transaction(async (tx) => {
+      if (!request.passwordHash) {
+        throw new BadRequestException('注册凭据已失效，请重新注册');
+      }
+      const bannedEmail = await tx.bannedEmail.findUnique({ where: { email: request.email } });
+      if (bannedEmail) {
+        throw new BadRequestException('该邮箱已被封禁，不能激活账号');
+      }
       const claimed = await tx.registrationRequest.updateMany({
         where: { id: request.id, status: 'pending', expiresAt: { gt: new Date() } },
         data: { status: 'approved', reviewedAt: new Date() },
@@ -466,7 +521,7 @@ export class AuthService {
       if (claimed.count !== 1) {
         throw new BadRequestException('该申请已处理或已过期');
       }
-      await tx.user.create({
+      const user = await tx.user.create({
         data: {
           email: request.email,
           username: request.username,
@@ -475,7 +530,25 @@ export class AuthService {
           emailVerifiedAt: new Date(),
           role: 'user',
           status: 'active',
-          termsAcceptedAt: new Date(),
+          termsAcceptedAt: request.policyAcceptedAt ?? new Date(),
+        },
+      });
+      await tx.policyAcceptance.create({
+        data: {
+          userId: user.id,
+          policyVersion: request.policyVersion ?? COMMUNITY_RULES_VERSION,
+          source: 'registration',
+          ip: request.policyAcceptedIp ?? (ip === 'unknown' ? null : ip),
+          userAgent: (request.policyAcceptedUserAgent ?? userAgent)?.slice(0, 512),
+          createdAt: request.policyAcceptedAt ?? new Date(),
+        },
+      });
+      await tx.registrationRequest.update({
+        where: { id: request.id },
+        data: {
+          passwordHash: null,
+          verificationCode: null,
+          credentialsPurgedAt: new Date(),
         },
       });
     });
@@ -504,7 +577,7 @@ export class AuthService {
     userId: bigint,
     email: string,
     username: string,
-    role: 'user' | 'moderator' | 'admin',
+    role: 'user' | 'moderator' | 'admin' | 'superadmin',
     ip?: string,
     userAgent?: string,
   ) {
@@ -534,7 +607,7 @@ export class AuthService {
     userId: bigint,
     email: string,
     username: string,
-    role: 'user' | 'moderator' | 'admin',
+    role: 'user' | 'moderator' | 'admin' | 'superadmin',
   ) {
     return this.jwt.sign(
       {

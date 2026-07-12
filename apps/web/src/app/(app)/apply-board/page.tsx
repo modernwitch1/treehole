@@ -9,6 +9,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Separator } from '@/components/ui/separator';
 import { applyForBoard } from '@/lib/api';
 import { toast } from 'sonner';
+import { CommunitySafetyNotice } from '@/components/community-safety-notice';
 
 export default function ApplyBoardPage() {
   const router = useRouter();
@@ -16,6 +17,7 @@ export default function ApplyBoardPage() {
   const [description, setDescription] = React.useState('');
   const [reason, setReason] = React.useState('');
   const [submitting, setSubmitting] = React.useState(false);
+  const [rulesAcknowledged, setRulesAcknowledged] = React.useState(false);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -39,6 +41,10 @@ export default function ApplyBoardPage() {
       toast.error('请填写申请理由');
       return;
     }
+    if (!rulesAcknowledged) {
+      toast.error('请先确认申请内容遵守社区规则');
+      return;
+    }
 
     setSubmitting(true);
     try {
@@ -46,6 +52,7 @@ export default function ApplyBoardPage() {
         name: name.trim(),
         description: description.trim(),
         reason: reason.trim(),
+        rulesAcknowledged,
       });
       toast.success('申请已提交，请等待管理员审核');
       router.push('/');
@@ -152,13 +159,25 @@ export default function ApplyBoardPage() {
           </CardContent>
         </Card>
 
+        <CommunitySafetyNotice />
+
+        <label className="flex cursor-pointer items-start gap-2 rounded-md border p-3 text-sm leading-relaxed">
+          <input
+            type="checkbox"
+            checked={rulesAcknowledged}
+            onChange={(event) => setRulesAcknowledged(event.target.checked)}
+            className="mt-1"
+          />
+          <span>我确认板块名称、简介和申请理由均遵守社区规则，不利用申请入口发布违规或引流信息。</span>
+        </label>
+
         <Separator />
 
         <div className="flex items-center justify-end gap-3">
           <Button type="button" variant="outline" onClick={() => router.back()}>
             取消
           </Button>
-          <Button type="submit" disabled={submitting}>
+          <Button type="submit" disabled={submitting || !rulesAcknowledged}>
             {submitting && <Loader2 className="mr-2 size-4 animate-spin" />}
             {submitting ? '提交中…' : '提交申请'}
           </Button>

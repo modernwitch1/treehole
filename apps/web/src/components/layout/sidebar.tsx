@@ -5,13 +5,14 @@ import { usePathname } from 'next/navigation';
 import {
   Plus,
   TrendingUp,
+  Layers3,
   Home,
   Compass,
   MessageSquare,
   Inbox,
   Settings,
   Info,
-  Heart,
+  MessagesSquare,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
@@ -37,6 +38,13 @@ export function Sidebar() {
           <SectionLabel>浏览</SectionLabel>
           <NavItem href="/" icon={<Home className="size-4" />} active={pathname === '/'}>
             首页
+          </NavItem>
+          <NavItem
+            href="/explore"
+            icon={<Layers3 className="size-4" />}
+            active={pathname.startsWith('/explore')}
+          >
+            全部帖子
           </NavItem>
           <NavItem
             href="/popular"
@@ -84,18 +92,10 @@ export function Sidebar() {
 
           <Separator className="my-2" />
 
-          <SectionLabel>热门标签</SectionLabel>
-          <div className="flex flex-wrap gap-1.5 px-1 py-1">
-            {['校园广场', '二手交易', '考研保研', '表白墙', '失物招领', '兼职实习'].map((t) => (
-              <Link
-                key={t}
-                href={`/?tag=${encodeURIComponent(t)}`}
-                className="inline-flex min-h-8 items-center rounded-full border border-transparent bg-muted/80 px-2.5 py-1 text-xs text-muted-foreground transition-colors hover:border-primary/20 hover:bg-primary/10 hover:text-primary"
-              >
-                #{t}
-              </Link>
-            ))}
-          </div>
+          <SectionLabel>内容分类</SectionLabel>
+          <p className="px-3 py-1 text-xs leading-5 text-muted-foreground">
+            帖子按主题频道归类。频道由管理员统一维护，避免自由标签重复、拼写分裂和滥用。
+          </p>
         </nav>
       </ScrollArea>
 
@@ -164,7 +164,7 @@ function FooterLinks() {
       </div>
       <p className="pt-1 leading-relaxed">
         <span className="inline-flex items-center gap-1 text-foreground/70">
-          <Heart className="size-3 text-primary" /> 浙工商树洞
+          <MessagesSquare className="size-3 text-primary" /> 浙工商树洞
         </span>
         <br />
         © 2026 · 仅面向 @pop.zjgsu.edu.cn 学生

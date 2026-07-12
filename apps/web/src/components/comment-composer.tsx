@@ -8,6 +8,7 @@ import { cn } from '@/lib/utils';
 import { createComment } from '@/lib/api';
 import { toast } from 'sonner';
 import type { Comment } from '@/types/api';
+import { CommunitySafetyNotice } from '@/components/community-safety-notice';
 
 interface CommentComposerProps {
   postId: string;
@@ -29,6 +30,7 @@ export function CommentComposer({
   const [content, setContent] = React.useState('');
   const [focused, setFocused] = React.useState(false);
   const [submitting, setSubmitting] = React.useState(false);
+  const [rulesAcknowledged, setRulesAcknowledged] = React.useState(false);
   const ref = React.useRef<HTMLTextAreaElement>(null);
 
   React.useEffect(() => {
@@ -60,12 +62,27 @@ export function CommentComposer({
   async function submit() {
     const text = content.trim();
     if (!text || submitting) return;
+    if (!rulesAcknowledged) {
+      toast.error('请先确认评论遵守社区规则');
+      return;
+    }
     setSubmitting(true);
     try {
-      const comment = await createComment({ postId, parentId, contentMd: text, isAnonymous: true });
+      const comment = await createComment({
+        postId,
+        parentId,
+        contentMd: text,
+        isAnonymous: true,
+        rulesAcknowledged,
+      });
       setContent('');
-      onCreated?.(comment);
-      toast.success(parentId ? '回复已发布' : '评论已发布');
+      setRulesAcknowledged(false);
+      if (comment.status === 'pending_review') {
+        toast.success('内容已提交审核，审核通过后显示');
+      } else {
+        onCreated?.(comment);
+        toast.success(parentId ? '回复已发布' : '评论已发布');
+      }
     } catch (err) {
       toast.error((err as Error).message || '发布失败');
     } finally {
@@ -90,7 +107,18 @@ export function CommentComposer({
         />
 
         {(focused || content.length > 0) && (
-          <div className="mt-2 flex items-center gap-1 border-t pt-2">
+          <div className="mt-2 space-y-2 border-t pt-2">
+            <CommunitySafetyNotice compact />
+            <label className="flex cursor-pointer items-start gap-2 text-xs text-muted-foreground">
+              <input
+                type="checkbox"
+                checked={rulesAcknowledged}
+                onChange={(event) => setRulesAcknowledged(event.target.checked)}
+                className="mt-0.5"
+              />
+              <span>我确认本条评论遵守社区规则，不攻击造谣、不泄露隐私。</span>
+            </label>
+            <div className="flex items-center gap-1">
             <ToolbarButton aria-label="加粗" onClick={() => wrap('**')}>
               <Bold className="size-4" />
             </ToolbarButton>
@@ -124,11 +152,12 @@ export function CommentComposer({
               </Button>
               <Button
                 size="sm"
-                disabled={!content.trim() || submitting}
+                disabled={!content.trim() || !rulesAcknowledged || submitting}
                 onClick={() => void submit()}
               >
                 {submitting ? '发布中…' : '发布'}
               </Button>
+            </div>
             </div>
           </div>
         )}
