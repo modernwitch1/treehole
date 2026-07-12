@@ -141,10 +141,9 @@ export class UploadService {
     );
 
     if (userId) {
-      const moderationStatus =
-        this.config.isProduction || this.config.get('IMAGE_MODERATION_ENABLED')
-          ? 'pending'
-          : 'passed';
+      // Uploads are available immediately unless image moderation is explicitly
+      // enabled. Production mode alone must not create a manual image-review queue.
+      const moderationStatus = this.config.get('IMAGE_MODERATION_ENABLED') ? 'pending' : 'passed';
       const upload = await this.prisma.upload.create({
         data: {
           userId,

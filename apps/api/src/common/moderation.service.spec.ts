@@ -45,13 +45,12 @@ describe('ModerationService', () => {
     expect(result.matches[0]).toMatchObject({ ruleId: '1', obfuscated: true });
   });
 
-  it('routes standalone phone numbers and email addresses to review', async () => {
+  it('blocks standalone phone numbers and email addresses before publication', async () => {
     const { service } = setup();
 
     const result = await service.moderate('手机号 13800138000，邮箱 test@example.com');
 
-    expect(result.status).toBe('pending_review');
-    expect(result.riskLevel).toBe(3);
+    expect(result).toMatchObject({ blocked: true, status: 'pending_review', riskLevel: 4 });
     expect(result.reasonCodes).toContain('personal_data_exposure');
   });
 
@@ -65,12 +64,12 @@ describe('ModerationService', () => {
     expect(result.riskLevel).toBe(1);
   });
 
-  it('uses level 3 for an ordinary review rule and keeps the concrete match evidence', async () => {
+  it('keeps ordinary review-rule evidence without blocking publication', async () => {
     const { service } = setup([{ id: 3n, word: '引流词', category: 'ad', action: 'review' }]);
 
     const result = await service.moderate('这里包含引流词');
 
-    expect(result).toMatchObject({ status: 'pending_review', blocked: false, riskLevel: 3 });
+    expect(result).toMatchObject({ status: 'published', blocked: false, riskLevel: 3 });
     expect(result.matches).toEqual([
       { ruleId: '3', category: 'ad', action: 'review', obfuscated: false },
     ]);
@@ -81,7 +80,7 @@ describe('ModerationService', () => {
 
     const result = await service.moderate('引用严重风险词作为课程讨论');
 
-    expect(result).toMatchObject({ status: 'pending_review', blocked: false, riskLevel: 4 });
+    expect(result).toMatchObject({ status: 'published', blocked: false, riskLevel: 4 });
     expect(result.matches[0]).toMatchObject({ category: 'porn', action: 'review' });
   });
 
@@ -95,7 +94,7 @@ describe('ModerationService', () => {
     expect(result.reasonCodes).toEqual([]);
   });
 
-  it('holds the third duplicate submission for review', async () => {
+  it('labels the third duplicate submission without holding it for review', async () => {
     const { service, redis } = setup();
     redis.client.eval.mockResolvedValueOnce(1).mockResolvedValueOnce(2).mockResolvedValueOnce(3);
     const context = { surface: 'comment' as const, authorId: 7n };
@@ -104,7 +103,7 @@ describe('ModerationService', () => {
     await service.moderateOrThrow('重 复内容', context);
     const third = await service.moderateOrThrow('重*复内容', context);
 
-    expect(third.status).toBe('pending_review');
+    expect(third.status).toBe('published');
     expect(third.riskLevel).toBe(3);
     expect(third.reasonCodes).toContain('duplicate_content_burst');
     const keys = redis.client.eval.mock.calls.map((call) => call[2]);

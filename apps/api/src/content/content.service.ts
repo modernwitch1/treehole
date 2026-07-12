@@ -373,14 +373,7 @@ export class ContentService {
     const moderatedBody = await this.moderation.moderateOrThrow(contentBody, moderationContext);
     const contentMd = this.appendImageMarkdown(moderatedBody.content, safeImageUrls);
     const contentHtml = this.renderMd(contentMd);
-    const status: ContentStatus =
-      moderatedTitle.status === 'pending_review' ||
-      moderatedBody.status === 'pending_review' ||
-      imageValidation.hasPending
-        ? 'pending_review'
-        : 'published';
-    let highestRisk =
-      moderatedTitle.riskLevel >= moderatedBody.riskLevel ? moderatedTitle : moderatedBody;
+    const status: ContentStatus = 'published';
     const combinedContent = `${title}\n${contentBody}`;
     const combinedHash = createHash('sha256').update(combinedContent).digest('hex');
     const moderationLabels = {
@@ -388,14 +381,6 @@ export class ContentService {
       body: this.moderation.moderationLabels(moderatedBody),
       imagePending: imageValidation.hasPending,
     } as unknown as Prisma.InputJsonValue;
-    if (imageValidation.hasPending && highestRisk.status !== 'pending_review') {
-      highestRisk = {
-        ...highestRisk,
-        status: 'pending_review',
-        riskLevel: 2,
-        reasonCodes: [...highestRisk.reasonCodes, 'image_pending_review'],
-      };
-    }
 
     const createdAt = new Date();
     const post = await this.prisma.$transaction(async (tx) => {
@@ -411,7 +396,7 @@ export class ContentService {
           status,
           moderationLabels,
           contentHash: combinedHash,
-          legalHold: status === 'pending_review' && highestRisk.riskLevel >= 4,
+          legalHold: false,
           authorIp: data.authorIp && data.authorIp !== 'unknown' ? data.authorIp : null,
           authorUserAgent: data.authorUserAgent?.slice(0, 512),
           upvotes: 0,
@@ -436,14 +421,6 @@ export class ContentService {
       return created;
     });
 
-    if (status === 'pending_review') {
-      await this.moderation.recordCase(
-        { ...highestRisk, contentHash: combinedHash },
-        moderationContext,
-        post.id,
-        combinedContent,
-      );
-    }
     if (safeImageUrls.length > 0) {
       await this.prisma.upload.updateMany({
         where: {
@@ -570,12 +547,12 @@ export class ContentService {
           contentMd: moderated.content,
           contentHtml: this.renderMd(moderated.content),
           isAnonymous,
-          status: moderated.status,
+          status: 'published',
           moderationLabels: this.moderation.moderationLabels(
             moderated,
           ) as unknown as Prisma.InputJsonValue,
           contentHash: moderated.contentHash,
-          legalHold: moderated.status === 'pending_review' && moderated.riskLevel >= 4,
+          legalHold: false,
           authorIp: data.authorIp && data.authorIp !== 'unknown' ? data.authorIp : null,
           authorUserAgent: data.authorUserAgent?.slice(0, 512),
         },
@@ -583,14 +560,12 @@ export class ContentService {
           author: { select: { id: true, username: true, avatarUrl: true } },
         },
       });
-      if (moderated.status === 'published') {
-        await tx.post.update({
-          where: { id: post.id },
-          data: { commentCount: { increment: 1 } },
-        });
-      }
+      await tx.post.update({
+        where: { id: post.id },
+        data: { commentCount: { increment: 1 } },
+      });
       const recipientId = parent?.authorId ?? post.authorId;
-      if (moderated.status === 'published' && recipientId !== author.id) {
+      if (recipientId !== author.id) {
         await tx.notification.create({
           data: {
             recipientId,
@@ -618,10 +593,6 @@ export class ContentService {
       });
       return created;
     });
-
-    if (moderated.status === 'pending_review') {
-      await this.moderation.recordCase(moderated, moderationContext, comment.id, contentBody);
-    }
 
     return this.toCommentItem(comment);
   }

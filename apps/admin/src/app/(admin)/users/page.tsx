@@ -62,7 +62,7 @@ export default function UsersPage() {
       <header>
         <h1 className="text-2xl font-bold tracking-tight">用户管理</h1>
         <p className="text-sm text-muted-foreground">
-          共 {users.length} 个匹配用户 · 操作会写入审计日志
+          共 {users.length} 个匹配用户 · 处罚、权限变更等重要操作会写入审计日志
         </p>
       </header>
 
@@ -111,6 +111,7 @@ export default function UsersPage() {
           <TableHeader>
             <TableRow>
               <TableHead className="w-[28%]">用户</TableHead>
+              <TableHead>UID</TableHead>
               <TableHead>角色</TableHead>
               <TableHead>状态</TableHead>
               <TableHead className="text-right">发帖 / 评论</TableHead>
@@ -123,13 +124,13 @@ export default function UsersPage() {
           <TableBody>
             {loading ? (
               <TableRow>
-                <TableCell colSpan={8} className="py-12 text-center text-sm text-muted-foreground">
+                <TableCell colSpan={9} className="py-12 text-center text-sm text-muted-foreground">
                   加载中…
                 </TableCell>
               </TableRow>
             ) : users.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={8} className="py-12 text-center text-sm text-muted-foreground">
+                <TableCell colSpan={9} className="py-12 text-center text-sm text-muted-foreground">
                   没有匹配的用户
                 </TableCell>
               </TableRow>
@@ -150,6 +151,7 @@ export default function UsersPage() {
                       </div>
                     </div>
                   </TableCell>
+                  <TableCell className="font-mono text-xs text-muted-foreground">{u.id}</TableCell>
                   <TableCell>
                     <UserRoleBadge role={u.role} />
                   </TableCell>

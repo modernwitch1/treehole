@@ -1,10 +1,12 @@
 import {
   Controller,
+  ForbiddenException,
   Get,
   HttpCode,
   HttpStatus,
   Param,
   Post,
+  Req,
   Res,
   UploadedFile,
   UseInterceptors,
@@ -16,7 +18,7 @@ import { UploadService } from './upload.service';
 import { UserAuthGuard } from '../auth/user-auth.guard';
 import { CurrentUser, type AuthUser } from '../common/decorators/current-user.decorator';
 import { RateLimitService } from '../common/security/rate-limit.service';
-import { AdminAuthGuard } from '../admin-auth/admin-auth.guard';
+import { AdminAuthGuard, type AdminRequest } from '../admin-auth/admin-auth.guard';
 
 @Controller()
 export class UploadController {
@@ -40,7 +42,14 @@ export class UploadController {
 
   @Get('admin/uploads/:id/preview')
   @UseGuards(AdminAuthGuard)
-  async moderationPreview(@Param('id') id: string, @Res() response: Response) {
+  async moderationPreview(
+    @Param('id') id: string,
+    @Req() req: AdminRequest,
+    @Res() response: Response,
+  ) {
+    if (req.admin?.role !== 'superadmin') {
+      throw new ForbiddenException('普通管理员只能处理帖子举报');
+    }
     const file = await this.upload.getModerationFile(id);
     response.setHeader('Content-Type', file.contentType);
     response.setHeader('Cache-Control', 'private, no-store');

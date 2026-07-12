@@ -30,6 +30,10 @@ describe('AdminService role isolation', () => {
       (service: AdminService) =>
         service.suspendUser('9', '具体违规原因', 7, ordinaryAdmin, '127.0.0.1'),
     ],
+    ['global statistics', (service: AdminService) => service.getStats(ordinaryAdmin)],
+    ['global post list', (service: AdminService) => service.listPosts({}, ordinaryAdmin)],
+    ['global comment list', (service: AdminService) => service.listComments({}, ordinaryAdmin)],
+    ['moderation case list', (service: AdminService) => service.listModerationCases({}, ordinaryAdmin)],
     [
       'anonymous post identity',
       (service: AdminService) => service.revealPostAuthor('9', ordinaryAdmin, '127.0.0.1'),
@@ -110,7 +114,7 @@ describe('AdminService role isolation', () => {
     });
   });
 
-  it('does not return a user privacy list when its audit record cannot be written', async () => {
+  it('does not audit routine user-list reads', async () => {
     const auditFailure = new Error('audit unavailable');
     const prisma = {
       user: {
@@ -136,9 +140,49 @@ describe('AdminService role isolation', () => {
       auditLog: { create: jest.fn().mockRejectedValue(auditFailure) },
     };
 
-    await expect(serviceWith(prisma).listUsers({}, superadmin, '127.0.0.1')).rejects.toBe(
-      auditFailure,
+    await expect(serviceWith(prisma).listUsers({}, superadmin, '127.0.0.1')).resolves.toMatchObject({
+      total: 1,
+    });
+    expect(prisma.auditLog.create).not.toHaveBeenCalled();
+  });
+
+  it('reveals a post author student ID only after the disclosure audit is persisted', async () => {
+    const events: string[] = [];
+    const tx = {
+      auditLog: {
+        create: jest.fn().mockImplementation(async () => events.push('audit')),
+      },
+      post: {
+        findUniqueOrThrow: jest.fn().mockImplementation(async () => {
+          events.push('author');
+          return { author: { id: 42n, username: 'private-user', email: 'private@pop.zjgsu.edu.cn' } };
+        }),
+      },
+      registrationRequest: {
+        findFirst: jest.fn().mockImplementation(async () => {
+          events.push('student-id');
+          return { studentId: '20260001' };
+        }),
+      },
+    };
+    const prisma = {
+      post: { findUnique: jest.fn().mockResolvedValue({ id: 10n }) },
+      $transaction: jest.fn((callback: (client: typeof tx) => Promise<unknown>) => callback(tx)),
+    };
+
+    await expect(
+      serviceWith(prisma).revealPostAuthor('10', superadmin, '127.0.0.1'),
+    ).resolves.toEqual({
+      id: '42',
+      username: 'private-user',
+      email: 'private@pop.zjgsu.edu.cn',
+      studentId: '20260001',
+    });
+    expect(events).toEqual(['audit', 'author', 'student-id']);
+    expect(tx.auditLog.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ action: 'post.reveal_author' }),
+      }),
     );
-    expect(prisma.auditLog.create).toHaveBeenCalledTimes(1);
   });
 });

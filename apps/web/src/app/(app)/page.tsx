@@ -45,6 +45,14 @@ export default async function HomePage() {
         </div>
       </section>
 
+      <section aria-labelledby="channels-heading" className="space-y-4 rounded-2xl border border-border/70 bg-card/60 p-4 sm:p-5">
+        <div>
+          <h2 id="channels-heading" className="text-lg font-semibold tracking-tight">按主题逛逛</h2>
+          <p className="mt-1 text-xs text-muted-foreground">从频道进入感兴趣的校园话题</p>
+        </div>
+        <BoardGrid boards={boards} />
+      </section>
+
       <section aria-labelledby="featured-heading" className="space-y-4">
         <div className="flex items-end justify-between gap-4">
           <div>
@@ -70,14 +78,6 @@ export default async function HomePage() {
             暂时还没有帖子，来发布今天的第一条话题吧。
           </div>
         )}
-      </section>
-
-      <section aria-labelledby="channels-heading" className="space-y-4 rounded-2xl border border-border/70 bg-card/60 p-4 sm:p-5">
-        <div>
-          <h2 id="channels-heading" className="text-lg font-semibold tracking-tight">按主题逛逛</h2>
-          <p className="mt-1 text-xs text-muted-foreground">从频道进入感兴趣的校园话题</p>
-        </div>
-        <BoardGrid boards={boards} />
       </section>
 
       <Button asChild size="lg" variant="outline" className="h-12 w-full rounded-xl text-sm font-semibold">

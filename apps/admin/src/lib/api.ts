@@ -42,6 +42,7 @@ import type {
   ModerationDecision,
   ModerationSurface,
   PaginatedResponse,
+  ReportCategory,
   ReportStatus,
   SensitiveWord,
   SensitiveWordAction,
@@ -356,7 +357,7 @@ export async function setUserRole(id: string, role: 'moderator' | 'user'): Promi
 // ============================================================
 
 export async function listReports(
-  opts: { status?: ReportStatus; page?: number; pageSize?: number } = {},
+  opts: { status?: ReportStatus; category?: ReportCategory; page?: number; pageSize?: number } = {},
 ): Promise<{
   items: AdminReport[];
   total: number;
@@ -367,6 +368,7 @@ export async function listReports(
   if (USE_MOCK) {
     let reports = loadReports();
     if (opts.status) reports = reports.filter((r) => r.status === opts.status);
+    if (opts.category) reports = reports.filter((r) => r.category === opts.category);
     const page = opts.page ?? 1;
     const pageSize = opts.pageSize ?? 20;
     const start = (page - 1) * pageSize;
@@ -381,6 +383,7 @@ export async function listReports(
   }
   const params = new URLSearchParams();
   if (opts.status) params.set('status', opts.status);
+  if (opts.category) params.set('category', opts.category);
   if (opts.page) params.set('page', String(opts.page));
   if (opts.pageSize) params.set('pageSize', String(opts.pageSize));
   return request(`/admin/reports?${params.toString()}`);
@@ -543,6 +546,7 @@ export interface RevealedIdentity {
   id: string;
   username: string;
   email: string;
+  studentId: string | null;
 }
 
 export async function revealContentAuthor(
@@ -560,6 +564,7 @@ export async function revealContentAuthor(
       id: 'mock-author',
       username: '浙小商Mock',
       email: 'mock@pop.zjgsu.edu.cn',
+      studentId: '20260001',
     };
   }
   const path = kind === 'post' ? `/admin/posts/${id}/identity` : `/admin/comments/${id}/identity`;
@@ -790,7 +795,6 @@ export async function listModerationCases(
     status?: ModerationCaseStatus;
     surface?: ModerationSurface;
     minRisk?: number;
-    assignedToMe?: boolean;
     page?: number;
     pageSize?: number;
   } = {},
@@ -815,18 +819,9 @@ export async function listModerationCases(
   if (opts.status) params.set('status', opts.status);
   if (opts.surface) params.set('surface', opts.surface);
   if (opts.minRisk !== undefined) params.set('minRisk', String(opts.minRisk));
-  if (opts.assignedToMe) params.set('assignedToMe', 'true');
   if (opts.page) params.set('page', String(opts.page));
   if (opts.pageSize) params.set('pageSize', String(opts.pageSize));
   return request(`/admin/moderation/cases?${params.toString()}`);
-}
-
-export async function claimModerationCase(id: string, version: number): Promise<{ ok: true }> {
-  if (USE_MOCK) return { ok: true };
-  return request(`/admin/moderation/cases/${id}/claim`, {
-    method: 'POST',
-    body: JSON.stringify({ version }),
-  });
 }
 
 export async function decideModerationCase(
@@ -1010,8 +1005,9 @@ export async function reviewAppeal(
 // Audit logs
 // ============================================================
 
-export async function listAuditLogs(opts: { page?: number; pageSize?: number } = {}): Promise<{
+export async function listAuditLogs(opts: { page?: number; pageSize?: number; actorId?: string } = {}): Promise<{
   items: AdminAuditLog[];
+  actors: AdminAuditLog['actor'][];
   total: number;
   page: number;
   pageSize: number;
@@ -1022,18 +1018,24 @@ export async function listAuditLogs(opts: { page?: number; pageSize?: number } =
     const page = opts.page ?? 1;
     const pageSize = opts.pageSize ?? 20;
     const start = (page - 1) * pageSize;
-    const items = logs.slice(start, start + pageSize);
+    const filteredLogs = opts.actorId ? logs.filter((log) => log.actor.id === opts.actorId) : logs;
+    const items = filteredLogs.slice(start, start + pageSize);
+    const actors = Array.from(
+      new Map(logs.map((log) => [log.actor.id, log.actor])).values(),
+    );
     return Promise.resolve({
       items,
-      total: logs.length,
+      actors,
+      total: filteredLogs.length,
       page,
       pageSize,
-      totalPages: Math.ceil(logs.length / pageSize),
+      totalPages: Math.ceil(filteredLogs.length / pageSize),
     });
   }
   const params = new URLSearchParams();
   if (opts.page) params.set('page', String(opts.page));
   if (opts.pageSize) params.set('pageSize', String(opts.pageSize));
+  if (opts.actorId) params.set('actorId', opts.actorId);
   return request(`/admin/audit-logs?${params.toString()}`);
 }
 

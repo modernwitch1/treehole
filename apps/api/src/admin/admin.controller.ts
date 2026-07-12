@@ -23,8 +23,8 @@ export class AdminController {
   constructor(private readonly admin: AdminService) {}
 
   @Get('stats')
-  stats() {
-    return this.admin.getStats();
+  stats(@Req() req: AdminRequest) {
+    return this.admin.getStats(this.currentAdmin(req));
   }
 
   @Get('users')
@@ -119,6 +119,7 @@ export class AdminController {
   @Get('reports')
   listReports(
     @Query('status') status: 'open' | 'resolved' | 'rejected' | undefined,
+    @Query('category') category?: 'illegal' | 'porn' | 'ad' | 'harassment' | 'other',
     @Query('page') page?: string,
     @Query('pageSize') pageSize?: string,
     @Req() req?: AdminRequest,
@@ -126,6 +127,7 @@ export class AdminController {
     return this.admin.listReports(
       {
         status,
+        category,
         page: page ? parseInt(page, 10) : undefined,
         pageSize: pageSize ? parseInt(pageSize, 10) : undefined,
       },
@@ -268,11 +270,13 @@ export class AdminController {
     @ClientIp() ip: string,
     @Query('page') page?: string,
     @Query('pageSize') pageSize?: string,
+    @Query('actorId') actorId?: string,
   ) {
     return this.admin.listAuditLogs(
       {
         page: page ? parseInt(page, 10) : undefined,
         pageSize: pageSize ? parseInt(pageSize, 10) : undefined,
+        actorId,
       },
       this.currentAdmin(req),
       ip,
@@ -287,7 +291,6 @@ export class AdminController {
     @Query('surface')
     surface?: 'post' | 'comment' | 'direct_message' | 'chatroom_message' | 'upload',
     @Query('minRisk') minRisk?: string,
-    @Query('assignedToMe') assignedToMe?: string,
     @Query('page') page?: string,
     @Query('pageSize') pageSize?: string,
     @Req() req?: AdminRequest,
@@ -298,27 +301,10 @@ export class AdminController {
         status,
         surface,
         minRisk: minRisk ? parseInt(minRisk, 10) : undefined,
-        assignedToMe: assignedToMe === 'true',
         page: page ? parseInt(page, 10) : undefined,
         pageSize: pageSize ? parseInt(pageSize, 10) : undefined,
       },
       this.currentAdmin(req),
-    );
-  }
-
-  @Post('moderation/cases/:id/claim')
-  claimModerationCase(
-    @Param('id') id: string,
-    @Body() body: { version: number },
-    @Req() req: AdminRequest,
-    @ClientIp() ip: string,
-  ) {
-    return this.admin.claimModerationCase(
-      id,
-      body.version,
-      this.currentAdmin(req),
-      ip,
-      req.headers['user-agent'],
     );
   }
 
@@ -360,11 +346,15 @@ export class AdminController {
   }
 
   @Get('uploads')
-  listPendingUploads(@Query('page') page?: string, @Query('pageSize') pageSize?: string) {
+  listPendingUploads(
+    @Query('page') page?: string,
+    @Query('pageSize') pageSize?: string,
+    @Req() req?: AdminRequest,
+  ) {
     return this.admin.listPendingUploads({
       page: page ? parseInt(page, 10) : undefined,
       pageSize: pageSize ? parseInt(pageSize, 10) : undefined,
-    });
+    }, this.currentAdmin(req));
   }
 
   @Get('appeals')
@@ -422,11 +412,15 @@ export class AdminController {
   }
 
   @Get('announcements')
-  listAnnouncements(@Query('page') page?: string, @Query('pageSize') pageSize?: string) {
+  listAnnouncements(
+    @Query('page') page?: string,
+    @Query('pageSize') pageSize?: string,
+    @Req() req?: AdminRequest,
+  ) {
     return this.admin.listAnnouncements({
       page: page ? parseInt(page, 10) : undefined,
       pageSize: pageSize ? parseInt(pageSize, 10) : undefined,
-    });
+    }, this.currentAdmin(req));
   }
 
   @Post('announcements')

@@ -9,7 +9,6 @@ import {
   Clock3,
   ExternalLink,
   RefreshCw,
-  Scale,
   ShieldAlert,
   UserSearch,
 } from 'lucide-react';
@@ -37,7 +36,6 @@ import {
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import {
-  claimModerationCase,
   decideModerationCase,
   getCurrentAdmin,
   listModerationCases,
@@ -62,7 +60,7 @@ const SURFACE_LABEL: Record<ModerationSurface, string> = {
 };
 
 const STATUS_LABEL: Record<ModerationCaseStatus, string> = {
-  pending: '待认领',
+  pending: '待处理',
   in_review: '审核中',
   resolved: '已处置',
   dismissed: '已放行',
@@ -112,17 +110,14 @@ export default function ModerationPage() {
       : 'pending';
   const [items, setItems] = React.useState<AdminModerationCase[]>([]);
   const [loading, setLoading] = React.useState(true);
-  const [adminId, setAdminId] = React.useState<string | null>(null);
   const [canUsePermanentActions, setCanUsePermanentActions] = React.useState(false);
   const [isSuperadmin, setIsSuperadmin] = React.useState(false);
   const [status, setStatus] = React.useState<ModerationCaseStatus | 'all'>(initialStatus);
   const [surface, setSurface] = React.useState<ModerationSurface | 'all'>('all');
   const [minRisk, setMinRisk] = React.useState(0);
-  const [assignedToMe, setAssignedToMe] = React.useState(false);
   const [page, setPage] = React.useState(1);
   const [total, setTotal] = React.useState(0);
   const [totalPages, setTotalPages] = React.useState(0);
-  const [claimingId, setClaimingId] = React.useState<string | null>(null);
   const [decisionCase, setDecisionCase] = React.useState<AdminModerationCase | null>(null);
   const [decision, setDecision] = React.useState<ModerationDecision>('allow');
   const [note, setNote] = React.useState('');
@@ -141,7 +136,7 @@ export default function ModerationPage() {
         requestedCaseId
           ? {
               // 从申诉进入时案件 ID 是唯一筛选条件，避免被页面残留的
-              // 状态/风险/认领人筛选掉，尤其是已结案的旧处罚案件。
+              // 状态/风险筛选掉，尤其是已结案的旧处罚案件。
               caseId: requestedCaseId,
               page: 1,
               pageSize: 20,
@@ -150,7 +145,6 @@ export default function ModerationPage() {
               status: status === 'all' ? undefined : status,
               surface: surface === 'all' ? undefined : surface,
               minRisk: minRisk || undefined,
-              assignedToMe,
               page,
               pageSize: 20,
             },
@@ -162,7 +156,6 @@ export default function ModerationPage() {
         setItems(result.items);
         setTotal(result.total);
         setTotalPages(result.totalPages);
-        setAdminId(admin?.id ?? null);
         setCanUsePermanentActions(admin?.role === 'superadmin');
         setIsSuperadmin(admin?.role === 'superadmin');
         if (!requestedCaseId && result.items.length === 0 && page > 1) setPage(page - 1);
@@ -175,7 +168,7 @@ export default function ModerationPage() {
       .finally(() => {
         if (request === sequence.current) setLoading(false);
       });
-  }, [assignedToMe, minRisk, page, requestedCaseId, status, surface]);
+  }, [minRisk, page, requestedCaseId, status, surface]);
 
   React.useEffect(() => {
     reload();
@@ -190,22 +183,6 @@ export default function ModerationPage() {
   function updateFilter(callback: () => void) {
     setPage(1);
     callback();
-  }
-
-  async function claim(item: AdminModerationCase) {
-    setClaimingId(item.id);
-    try {
-      await claimModerationCase(item.id, item.version);
-      toast.success('案件已认领');
-      setPage(1);
-      setStatus('in_review');
-      setAssignedToMe(true);
-    } catch (error) {
-      toast.error((error as Error).message || '认领失败，案件可能已被其他管理员更新');
-      reload();
-    } finally {
-      setClaimingId(null);
-    }
   }
 
   function openDecision(item: AdminModerationCase) {
@@ -267,7 +244,7 @@ export default function ModerationPage() {
         <div>
           <h1 className="text-2xl font-bold tracking-tight">统一审核案件</h1>
           <p className="text-sm text-muted-foreground">
-            自动风控命中的帖子、评论、私信与聊天消息统一排队 · 先认领再处置，防止并发覆盖
+            自动风控与用户举报统一汇总；任何管理员都可直接处置，先提交者生效并自动留痕
           </p>
         </div>
         <Button variant="outline" size="sm" onClick={reload} disabled={loading}>
@@ -324,7 +301,7 @@ export default function ModerationPage() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">全部状态</SelectItem>
-                <SelectItem value="pending">待认领</SelectItem>
+                <SelectItem value="pending">待处理</SelectItem>
                 <SelectItem value="in_review">审核中</SelectItem>
                 <SelectItem value="resolved">已处置</SelectItem>
                 <SelectItem value="dismissed">已放行</SelectItem>
@@ -370,15 +347,6 @@ export default function ModerationPage() {
               </SelectContent>
             </Select>
           </div>
-          <label className="flex h-9 cursor-pointer items-center gap-2 rounded-md border px-3 text-sm">
-            <input
-              type="checkbox"
-              checked={assignedToMe}
-              onChange={(event) => updateFilter(() => setAssignedToMe(event.target.checked))}
-              className="size-4 accent-primary"
-            />
-            只看我认领的
-          </label>
           <div className="ml-auto text-sm text-muted-foreground">共 {total} 个案件</div>
         </CardContent>
       </Card>
@@ -400,8 +368,6 @@ export default function ModerationPage() {
         <div className="space-y-3">
           {items.map((item) => {
             const isOpen = item.status === 'pending' || item.status === 'in_review';
-            const isMine = item.assignedTo?.id === adminId;
-            const isAssignedElsewhere = Boolean(item.assignedTo && !isMine);
             const reasonCodes = reasonTokens(item.reasonCodes);
             const matchedRules = matchTokens(item.matchedRules);
             return (
@@ -470,16 +436,6 @@ export default function ModerationPage() {
                   </div>
 
                   <div className="flex flex-wrap items-center gap-2 border-t pt-3">
-                    {item.assignedTo ? (
-                      <span className="text-xs text-muted-foreground">
-                        审核人：
-                        <span className="font-medium text-foreground">
-                          {item.assignedTo.username}
-                        </span>
-                      </span>
-                    ) : (
-                      <span className="text-xs text-muted-foreground">尚未认领</span>
-                    )}
                     {item.surface === 'post' && item.targetId && (
                       <Button size="sm" variant="ghost" asChild>
                         <a
@@ -504,30 +460,14 @@ export default function ModerationPage() {
                       </Button>
                     )}
                     {item.surface === 'upload' && (
-                      <Button className="ml-auto" size="sm" variant="outline" asChild>
-                        <a href="/uploads">前往图片专用审核</a>
-                      </Button>
+                      <span className="ml-auto text-xs text-muted-foreground">
+                        图片不再单独进入人工队列；此为历史案件
+                      </span>
                     )}
-                    {item.surface !== 'upload' && isOpen && !item.assignedTo && (
-                      <Button
-                        className="ml-auto"
-                        size="sm"
-                        variant="outline"
-                        disabled={claimingId === item.id}
-                        onClick={() => void claim(item)}
-                      >
-                        <Scale /> {claimingId === item.id ? '认领中…' : '认领案件'}
-                      </Button>
-                    )}
-                    {item.surface !== 'upload' && isOpen && isMine && (
+                    {item.surface !== 'upload' && isOpen && (
                       <Button className="ml-auto" size="sm" onClick={() => openDecision(item)}>
                         <ShieldAlert /> 作出处置
                       </Button>
-                    )}
-                    {item.surface !== 'upload' && isOpen && isAssignedElsewhere && (
-                      <span className="ml-auto text-xs text-muted-foreground">
-                        已由其他管理员锁定处理
-                      </span>
                     )}
                   </div>
                 </CardContent>
@@ -653,6 +593,9 @@ export default function ModerationPage() {
                 <p className="mt-1 font-mono text-sm">{revealedIdentity.email}</p>
                 <p className="mt-1 font-mono text-xs text-muted-foreground">
                   UID {revealedIdentity.id}
+                </p>
+                <p className="mt-1 font-mono text-xs text-muted-foreground">
+                  学号 {revealedIdentity.studentId ?? '未关联'}
                 </p>
               </div>
               <p className="text-xs text-muted-foreground">关闭窗口后，本页面会立即清除身份信息。</p>

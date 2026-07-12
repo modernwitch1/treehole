@@ -16,7 +16,6 @@ import {
   ExternalLink,
   MessageSquare,
   Megaphone,
-  Images,
   ShieldAlert,
   Scale,
   FolderPlus,
@@ -52,6 +51,7 @@ interface NavItemDef {
     | 'pendingCases'
     | 'pendingAppeals';
   superadminOnly?: boolean;
+  reportsOnly?: boolean;
 }
 
 interface NavGroupDef {
@@ -74,9 +74,8 @@ const NAV_GROUPS: NavGroupDef[] = [
         badgeKey: 'pendingRegistrations',
         superadminOnly: true,
       },
-      { href: '/reports', label: '举报队列', icon: Flag, badgeKey: 'openReports' },
+      { href: '/reports', label: '举报队列', icon: Flag, badgeKey: 'openReports', reportsOnly: true },
       { href: '/moderation', label: '统一审核案件', icon: ShieldAlert, badgeKey: 'pendingCases' },
-      { href: '/uploads', label: '图片待审', icon: Images, badgeKey: 'pendingUploads' },
       {
         href: '/appeals',
         label: '处罚申诉',
@@ -152,7 +151,10 @@ export function AdminSidebar({ role, stats }: SidebarProps) {
         {NAV_GROUPS.map((group) => ({
           ...group,
           items: group.items.filter(
-            (item) => !item.superadminOnly || role === 'superadmin',
+          (item) =>
+            role === 'superadmin'
+              ? true
+              : item.reportsOnly,
           ),
         }))
           .filter((group) => group.items.length > 0)

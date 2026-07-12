@@ -2,7 +2,7 @@
 
 import * as React from 'react';
 import Link from 'next/link';
-import { ArrowRight, Flame, MessagesSquare, PenLine, ShieldCheck } from 'lucide-react';
+import { ArrowRight, Flame, MessagesSquare, ShieldCheck } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { formatScore } from '@/lib/format';
 import { listPosts } from '@/lib/api';
@@ -31,9 +31,6 @@ export function RightRail() {
           <div className="mt-3 flex items-center gap-2 rounded-xl bg-background/70 px-3 py-2 text-xs text-muted-foreground">
             <ShieldCheck className="size-4 text-primary" /> 校园邮箱认证 · UID 仅后台可见
           </div>
-          <Button asChild className="mt-3 w-full rounded-xl" size="sm">
-            <Link href="/submit"><PenLine className="size-4" /> 发布新话题</Link>
-          </Button>
         </section>
 
         <section className="rounded-2xl border border-border/70 bg-card p-3">

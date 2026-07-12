@@ -42,7 +42,8 @@ export class AdminService {
     private readonly redis: RedisService,
   ) {}
 
-  async getStats() {
+  async getStats(admin: AdminPrincipal) {
+    this.assertSuperadmin(admin, '只有超级管理员可以查看全站统计');
     const now = new Date();
     const today = new Date(now);
     today.setHours(0, 0, 0, 0);
@@ -174,17 +175,6 @@ export class AdminService {
         reportCount: reportCounts.get(u.id) ?? 0,
         createdAt: u.createdAt.toISOString(),
       };
-    });
-
-    await this.audit(admin, 'users.privacy_list.view', 'user-list', undefined, ip, userAgent, {
-      query: q ?? null,
-      status: opts.status ?? null,
-      role: opts.role ?? null,
-      page,
-      pageSize,
-      resultCount: items.length,
-      total,
-      resultUserIds: users.map((user) => String(user.id)).join(','),
     });
 
     return {
@@ -388,13 +378,17 @@ export class AdminService {
   }
 
   async listReports(
-    opts: { status?: ReportStatus; page?: number; pageSize?: number },
+    opts: { status?: ReportStatus; category?: AdminSensitiveCategory; page?: number; pageSize?: number },
     admin: AdminPrincipal,
   ) {
     const { page, pageSize } = this.normalizePagination(opts.page, opts.pageSize);
     const skip = (page - 1) * pageSize;
 
-    const where = opts.status ? { status: opts.status } : undefined;
+    const where: Prisma.ReportWhereInput = {
+      ...(opts.status ? { status: opts.status } : {}),
+      ...(opts.category ? { category: opts.category } : {}),
+      ...(admin.role === 'superadmin' ? {} : { targetType: 'post' }),
+    };
 
     const [reports, total] = await Promise.all([
       this.prisma.report.findMany({
@@ -460,6 +454,9 @@ export class AdminService {
     const report = await this.prisma.report.findUnique({ where: { id: this.parseId(id) } });
     if (!report) {
       throw new NotFoundException('举报不存在');
+    }
+    if (admin.role !== 'superadmin' && report.targetType !== 'post') {
+      throw new ForbiddenException('普通管理员只能处理帖子举报');
     }
     if (report.status !== 'open') {
       throw new BadRequestException('该举报已被其他管理员处理');
@@ -535,8 +532,9 @@ export class AdminService {
       page?: number;
       pageSize?: number;
     },
-    _admin: AdminPrincipal,
+    admin: AdminPrincipal,
   ) {
+    this.assertSuperadmin(admin, '只有超级管理员可以浏览全站内容');
     const { page, pageSize } = this.normalizePagination(opts.page, opts.pageSize);
     const skip = (page - 1) * pageSize;
     const q = opts.q?.trim().slice(0, 100);
@@ -619,6 +617,7 @@ export class AdminService {
     ip: string,
     userAgent?: string | string[],
   ) {
+    this.assertSuperadmin(admin, '只有超级管理员可以直接处理帖子');
     if (!['hide', 'restore', 'pin', 'unpin', 'lock', 'unlock', 'delete'].includes(action)) {
       throw new BadRequestException('无效的帖子处理操作');
     }
@@ -630,25 +629,18 @@ export class AdminService {
       this.assertSuperadmin(admin, '永久删除帖子只能由超级管理员执行');
     }
     const adminId = this.parseId(admin.id);
-    const activeCases = await this.prisma.moderationCase.findMany({
+    const activeCases = await this.prisma.moderationCase.count({
       where: {
         surface: 'post',
         targetId: post.id,
         status: { in: ['pending', 'in_review'] },
       },
-      select: { assignedTo: true },
     });
     if (
       action === 'restore' &&
-      (post.status === 'pending_review' || post.legalHold || activeCases.length > 0)
+      (post.status === 'pending_review' || post.legalHold || activeCases > 0)
     ) {
       throw new BadRequestException('待审或证据保全中的帖子必须通过案件/举报流程复核');
-    }
-    if (
-      ['hide', 'delete'].includes(action) &&
-      activeCases.some((item) => item.assignedTo && item.assignedTo !== adminId)
-    ) {
-      throw new BadRequestException('帖子案件已由其他管理员认领');
     }
     if (action === 'restore' && post.status === 'deleted') {
       this.assertSuperadmin(admin, '恢复已删除帖子只能由超级管理员执行');
@@ -663,7 +655,6 @@ export class AdminService {
             surface: 'post',
             targetId: post.id,
             status: { in: ['pending', 'in_review'] },
-            OR: [{ assignedTo: null }, { assignedTo: adminId }],
           },
           data: {
             status: 'resolved',
@@ -697,22 +688,32 @@ export class AdminService {
     userAgent?: string | string[],
   ) {
     this.assertSuperadmin(admin);
-    const post = await this.prisma.post.findUnique({
-      where: { id: this.parseId(id) },
-      include: { author: { select: { id: true, username: true, email: true } } },
-    });
+    const postId = this.parseId(id);
+    const post = await this.prisma.post.findUnique({ where: { id: postId }, select: { id: true } });
     if (!post) {
       throw new NotFoundException('帖子不存在');
     }
-    await this.audit(admin, 'post.reveal_author', 'post', post.id, ip, userAgent, {
-      title: post.title,
-      authorId: String(post.author.id),
+
+    return this.prisma.$transaction(async (tx) => {
+      // Persist the audit record before selecting any author identity or student ID.
+      await this.audit(admin, 'post.reveal_author', 'post', post.id, ip, userAgent, {
+        disclosedFields: 'uid,username,email,studentId',
+      }, tx);
+      const tracedPost = await tx.post.findUniqueOrThrow({
+        where: { id: post.id },
+        select: { author: { select: { id: true, username: true, email: true } } },
+      });
+      const registration = await tx.registrationRequest.findFirst({
+        where: { email: { equals: tracedPost.author.email, mode: 'insensitive' } },
+        select: { studentId: true },
+      });
+      return {
+        id: String(tracedPost.author.id),
+        username: tracedPost.author.username,
+        email: tracedPost.author.email,
+        studentId: registration?.studentId ?? null,
+      };
     });
-    return {
-      id: String(post.author.id),
-      username: post.author.username,
-      email: post.author.email,
-    };
   }
 
   async listComments(
@@ -723,8 +724,9 @@ export class AdminService {
       page?: number;
       pageSize?: number;
     },
-    _admin: AdminPrincipal,
+    admin: AdminPrincipal,
   ) {
+    this.assertSuperadmin(admin, '只有超级管理员可以浏览全站内容');
     const { page, pageSize } = this.normalizePagination(opts.page, opts.pageSize);
     const skip = (page - 1) * pageSize;
     const q = opts.q?.trim().slice(0, 100);
@@ -806,6 +808,7 @@ export class AdminService {
     ip: string,
     userAgent?: string | string[],
   ) {
+    this.assertSuperadmin(admin, '只有超级管理员可以直接处理评论');
     if (!['hide', 'restore', 'delete'].includes(action)) {
       throw new BadRequestException('无效的评论处理操作');
     }
@@ -817,25 +820,18 @@ export class AdminService {
       this.assertSuperadmin(admin, '永久删除评论只能由超级管理员执行');
     }
     const adminId = this.parseId(admin.id);
-    const activeCases = await this.prisma.moderationCase.findMany({
+    const activeCases = await this.prisma.moderationCase.count({
       where: {
         surface: 'comment',
         targetId: comment.id,
         status: { in: ['pending', 'in_review'] },
       },
-      select: { assignedTo: true },
     });
     if (
       action === 'restore' &&
-      (comment.status === 'pending_review' || comment.legalHold || activeCases.length > 0)
+      (comment.status === 'pending_review' || comment.legalHold || activeCases > 0)
     ) {
       throw new BadRequestException('待审或证据保全中的评论必须通过案件/举报流程复核');
-    }
-    if (
-      ['hide', 'delete'].includes(action) &&
-      activeCases.some((item) => item.assignedTo && item.assignedTo !== adminId)
-    ) {
-      throw new BadRequestException('评论案件已由其他管理员认领');
     }
     if (action === 'restore' && comment.status === 'deleted') {
       this.assertSuperadmin(admin, '恢复已删除评论只能由超级管理员执行');
@@ -868,7 +864,6 @@ export class AdminService {
           surface: 'comment',
           targetId: comment.id,
           status: { in: ['pending', 'in_review'] },
-          OR: [{ assignedTo: null }, { assignedTo: adminId }],
         },
         data: {
           status: 'resolved',
@@ -900,6 +895,7 @@ export class AdminService {
     ip: string,
     userAgent?: string | string[],
   ) {
+    this.assertSuperadmin(admin, '只有超级管理员可以批量处理内容');
     this.assertSuperadmin(admin);
     const comment = await this.prisma.comment.findUnique({
       where: { id: this.parseId(id) },
@@ -924,6 +920,7 @@ export class AdminService {
     ip: string,
     userAgent?: string | string[],
   ) {
+    this.assertSuperadmin(admin, '只有超级管理员可以查看统一审核案件');
     if (!['post', 'comment'].includes(input.kind) || !['approve', 'hide'].includes(input.action)) {
       throw new BadRequestException('无效的批量操作');
     }
@@ -955,18 +952,6 @@ export class AdminService {
 
     await this.prisma.$transaction(async (tx) => {
       if (input.action === 'approve') {
-        if (input.kind === 'post') {
-          const unapprovedUploads = await tx.upload.count({
-            where: {
-              attachedToType: 'post',
-              attachedToId: { in: ids },
-              moderationStatus: { not: 'passed' },
-            },
-          });
-          if (unapprovedUploads > 0) {
-            throw new BadRequestException('部分帖子仍有关联图片未通过审核');
-          }
-        }
         const claimedCases = await tx.moderationCase.updateMany({
           where: {
             surface: input.kind,
@@ -974,7 +959,6 @@ export class AdminService {
             status: { in: ['pending', 'in_review'] },
             riskLevel: { lt: 4 },
             legalHold: false,
-            OR: [{ assignedTo: null }, { assignedTo: adminId }],
           },
           data: {
             status: 'resolved',
@@ -987,7 +971,7 @@ export class AdminService {
         });
         if (claimedCases.count !== ids.length) {
           throw new BadRequestException(
-            '部分内容风险过高、未关联案件、已被其他管理员认领或状态已变化',
+            '部分内容风险过高、未关联案件或状态已变化',
           );
         }
       }
@@ -1049,7 +1033,6 @@ export class AdminService {
             surface: input.kind,
             targetId: { in: ids },
             status: { in: ['pending', 'in_review'] },
-            OR: [{ assignedTo: null }, { assignedTo: adminId }],
           },
           data: {
             status: 'resolved',
@@ -1080,19 +1063,18 @@ export class AdminService {
       status?: 'pending' | 'in_review' | 'resolved' | 'dismissed';
       surface?: 'post' | 'comment' | 'direct_message' | 'chatroom_message' | 'upload';
       minRisk?: number;
-      assignedToMe?: boolean;
       page?: number;
       pageSize?: number;
     },
     admin: AdminPrincipal,
   ) {
+    this.assertSuperadmin(admin, '只有超级管理员可以处理统一审核案件');
     const { page, pageSize } = this.normalizePagination(opts.page, opts.pageSize);
     const where: Prisma.ModerationCaseWhereInput = {
       ...(opts.caseId ? { id: this.parseId(opts.caseId) } : {}),
       ...(opts.status ? { status: opts.status } : {}),
       ...(opts.surface ? { surface: opts.surface } : {}),
       ...(opts.minRisk ? { riskLevel: { gte: Math.min(Math.max(opts.minRisk, 0), 4) } } : {}),
-      ...(opts.assignedToMe ? { assignedTo: this.parseId(admin.id) } : {}),
     };
     const [cases, total] = await Promise.all([
       this.prisma.moderationCase.findMany({
@@ -1127,50 +1109,6 @@ export class AdminService {
       pageSize,
       totalPages: Math.ceil(total / pageSize),
     };
-  }
-
-  async claimModerationCase(
-    id: string,
-    version: number,
-    admin: AdminPrincipal,
-    ip: string,
-    userAgent?: string | string[],
-  ) {
-    if (!Number.isInteger(version) || version < 1) {
-      throw new BadRequestException('案件版本无效，请刷新后重试');
-    }
-    const caseId = this.parseId(id);
-    await this.prisma.$transaction(async (tx) => {
-      const claimed = await tx.moderationCase.updateMany({
-        where: {
-          id: caseId,
-          version,
-          status: { in: ['pending', 'in_review'] },
-          OR: [{ assignedTo: null }, { assignedTo: this.parseId(admin.id) }],
-        },
-        data: {
-          status: 'in_review',
-          assignedTo: this.parseId(admin.id),
-          version: { increment: 1 },
-        },
-      });
-      if (claimed.count !== 1) {
-        throw new BadRequestException('案件已被其他管理员认领或更新');
-      }
-      await this.audit(
-        admin,
-        'moderation-case.claim',
-        'moderation-case',
-        caseId,
-        ip,
-        userAgent,
-        {
-          version,
-        },
-        tx,
-      );
-    });
-    return { ok: true };
   }
 
   async decideModerationCase(
@@ -1229,7 +1167,6 @@ export class AdminService {
           id: caseId,
           version: input.version,
           status: { in: ['pending', 'in_review'] },
-          OR: [{ assignedTo: null }, { assignedTo: this.parseId(admin.id) }],
         },
         data: {
           status: input.decision === 'allow' ? 'dismissed' : 'resolved',
@@ -1237,6 +1174,7 @@ export class AdminService {
           resolutionNote: note,
           resolvedBy: this.parseId(admin.id),
           resolvedAt: new Date(),
+          assignedTo: null,
           legalHold:
             input.decision === 'allow' || input.decision === 'warn'
               ? false
@@ -1380,10 +1318,12 @@ export class AdminService {
       id: String(moderationCase.author.id),
       username: moderationCase.author.username,
       email: moderationCase.author.email,
+      studentId: null,
     };
   }
 
-  async listPendingUploads(opts: { page?: number; pageSize?: number }) {
+  async listPendingUploads(opts: { page?: number; pageSize?: number }, admin: AdminPrincipal) {
+    this.assertSuperadmin(admin, '只有超级管理员可以查看待审核图片');
     const { page, pageSize } = this.normalizePagination(opts.page, opts.pageSize);
     const [uploads, total] = await Promise.all([
       this.prisma.upload.findMany({
@@ -1432,6 +1372,7 @@ export class AdminService {
     ip: string,
     userAgent?: string | string[],
   ) {
+    this.assertSuperadmin(admin, '只有超级管理员可以审核图片');
     this.assertSuperadmin(admin, '只有超级管理员可以复核处罚申诉');
     const { page, pageSize } = this.normalizePagination(opts.page, opts.pageSize);
     await this.prisma.sanction.updateMany({
@@ -1491,14 +1432,6 @@ export class AdminService {
           : null,
       },
     }));
-    await this.audit(admin, 'appeals.privacy_list.view', 'appeal-list', undefined, ip, userAgent, {
-      status: opts.status ?? null,
-      page,
-      pageSize,
-      resultCount: items.length,
-      total,
-      resultUserIds: appeals.map((appeal) => String(appeal.userId)).join(','),
-    });
     return {
       items,
       total,
@@ -1699,7 +1632,7 @@ export class AdminService {
   }
 
   async listAuditLogs(
-    opts: { page?: number; pageSize?: number },
+    opts: { page?: number; pageSize?: number; actorId?: string },
     admin: AdminPrincipal,
     ip: string,
     userAgent?: string | string[],
@@ -1707,15 +1640,37 @@ export class AdminService {
     this.assertSuperadmin(admin, '只有超级管理员可以查看审计日志');
     const { page, pageSize } = this.normalizePagination(opts.page, opts.pageSize);
     const skip = (page - 1) * pageSize;
+    // These legacy entries only describe routine list reads. They are retained
+    // in storage for integrity, but excluded from the operational audit view.
+    const routineReadActions = [
+      'users.privacy_list.view',
+      'appeals.privacy_list.view',
+      'audit-log.list.view',
+      'sensitive-word.list.view',
+    ];
+    const meaningfulLogWhere: Prisma.AuditLogWhereInput = {
+      action: { notIn: routineReadActions },
+    };
+    const where: Prisma.AuditLogWhereInput = {
+      ...meaningfulLogWhere,
+      ...(opts.actorId ? { actorId: this.parseId(opts.actorId) } : {}),
+    };
 
-    const [logs, total] = await Promise.all([
+    const [logs, total, actorLogs] = await Promise.all([
       this.prisma.auditLog.findMany({
+        where,
         orderBy: { createdAt: 'desc' },
         skip,
         take: pageSize,
         include: { actor: { select: { id: true, username: true, role: true } } },
       }),
-      this.prisma.auditLog.count(),
+      this.prisma.auditLog.count({ where }),
+      this.prisma.auditLog.findMany({
+        where: { ...meaningfulLogWhere, actorId: { not: null } },
+        distinct: ['actorId'],
+        orderBy: { createdAt: 'desc' },
+        include: { actor: { select: { id: true, username: true, role: true } } },
+      }),
     ]);
 
     const items = logs.map((log) => {
@@ -1738,16 +1693,13 @@ export class AdminService {
       };
     });
 
-    await this.audit(admin, 'audit-log.list.view', 'audit-log', undefined, ip, userAgent, {
-      page,
-      pageSize,
-      resultCount: items.length,
-      total,
-      resultAuditLogIds: logs.map((log) => String(log.id)).join(','),
-    });
-
     return {
       items,
+      actors: actorLogs.flatMap((log) =>
+        log.actor
+          ? [{ id: String(log.actor.id), username: log.actor.username, role: log.actor.role }]
+          : [],
+      ),
       total,
       page,
       pageSize,
@@ -1755,7 +1707,8 @@ export class AdminService {
     };
   }
 
-  async listAnnouncements(opts: { page?: number; pageSize?: number }) {
+  async listAnnouncements(opts: { page?: number; pageSize?: number }, admin: AdminPrincipal) {
+    this.assertSuperadmin(admin, '只有超级管理员可以查看站内通知');
     const { page, pageSize } = this.normalizePagination(opts.page, opts.pageSize);
     const skip = (page - 1) * pageSize;
 
@@ -1924,26 +1877,6 @@ export class AdminService {
     ]);
 
     const items = words.map((word) => this.toSensitiveWordDto(word));
-
-    await this.audit(
-      admin,
-      'sensitive-word.list.view',
-      'sensitive-word',
-      undefined,
-      ip,
-      userAgent,
-      {
-        query: q ?? null,
-        category: opts.category ?? null,
-        ruleAction: opts.action ?? null,
-        enabled: opts.enabled ?? null,
-        page,
-        pageSize,
-        resultCount: items.length,
-        total,
-        resultRuleIds: words.map((word) => String(word.id)).join(','),
-      },
-    );
 
     return {
       items,

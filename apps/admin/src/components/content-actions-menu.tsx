@@ -263,12 +263,15 @@ export function ContentActionsMenu({
                 <p className="mt-3 text-sm font-semibold">{identity.username}</p>
                 <p className="mt-1 font-mono text-sm">{identity.email}</p>
                 <p className="mt-1 font-mono text-xs text-muted-foreground">UID {identity.id}</p>
+                <p className="mt-1 font-mono text-xs text-muted-foreground">
+                  学号 {identity.studentId ?? '未关联'}
+                </p>
               </div>
               <p className="text-xs text-muted-foreground">关闭窗口后本页面不再保留该信息。</p>
             </div>
           ) : (
             <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-4 text-sm leading-6">
-              确认后将立即显示该匿名内容作者的账号、邮箱与 UID。请只在确有管理需要时调阅，
+              确认后将立即显示该匿名内容作者的账号、邮箱、UID 与学号。请只在确有管理需要时调阅，
               不得复制、传播或用于平台治理之外的用途。
             </div>
           )}

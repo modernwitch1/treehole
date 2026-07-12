@@ -137,25 +137,28 @@ export class ModerationService {
       reasonCodes.add('obfuscated_mask_rule');
     }
 
-    const blocked = matched.some((rule) => rule.action === 'block');
-    const heuristicReview = [...reasonCodes].some((reason) =>
-      [
-        'link_flood',
-        'contact_solicitation',
-        'personal_data_exposure',
-        'obfuscated_mask_rule',
-        'suspicious_link',
-      ].includes(reason),
-    );
-    const needsReview = matched.some((rule) => rule.action === 'review') || heuristicReview;
+    // Only high-confidence violations stop a submission. Other signals remain
+    // visible in moderationLabels so reports and proactive patrols have context,
+    // but they do not create a mandatory review backlog for ordinary content.
+    const automaticBlockReasons = new Set([
+      'link_flood',
+      'contact_solicitation',
+      'personal_data_exposure',
+      'suspicious_link',
+    ]);
+    const blocked =
+      matched.some((rule) => rule.action === 'block') ||
+      [...reasonCodes].some((reason) => automaticBlockReasons.has(reason));
+    const hasRiskSignal =
+      matched.some((rule) => rule.action === 'review') || reasonCodes.size > 0;
     const severeCategory = matched.some(
       (rule) => rule.category === 'political' || rule.category === 'porn',
     );
-    const riskLevel = blocked ? 4 : needsReview ? (severeCategory ? 4 : 3) : matched.length ? 1 : 0;
+    const riskLevel = blocked ? 4 : hasRiskSignal ? (severeCategory ? 4 : 3) : matched.length ? 1 : 0;
 
     return {
       content: moderated,
-      status: needsReview ? 'pending_review' : 'published',
+      status: blocked ? 'pending_review' : 'published',
       blocked,
       matches,
       reasonCodes: [...reasonCodes],
@@ -334,7 +337,6 @@ export class ModerationService {
         if (!result.reasonCodes.includes('duplicate_content_burst')) {
           result.reasonCodes.push('duplicate_content_burst');
         }
-        result.status = 'pending_review';
         result.riskLevel = Math.max(result.riskLevel, 3);
       }
     } catch (error) {

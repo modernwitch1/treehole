@@ -113,6 +113,12 @@ export interface AdminAuditLog {
   createdAt: string;
 }
 
+export interface AdminAuditActor {
+  id: string;
+  username: string;
+  role: UserRole;
+}
+
 export interface AdminStats {
   totalUsers: number;
   totalPosts: number;

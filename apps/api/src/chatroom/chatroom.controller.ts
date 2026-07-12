@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  ForbiddenException,
   Get,
   Param,
   Post,
@@ -128,7 +129,8 @@ export class AdminChatroomController {
   constructor(private readonly chatroomService: ChatroomService) {}
 
   @Get()
-  listAll(): Promise<ChatroomDetail[]> {
+  listAll(@Req() req: AdminRequest): Promise<ChatroomDetail[]> {
+    this.requireSuperadmin(req);
     return this.chatroomService.listChatrooms();
   }
 
@@ -137,7 +139,7 @@ export class AdminChatroomController {
     @Req() req: AdminRequest,
     @ClientIp() ip: string,
   ): Promise<AdminFlaggedMessageDto[]> {
-    const admin = this.currentAdmin(req);
+    const admin = this.requireSuperadmin(req);
     return this.chatroomService.getFlaggedMessages({
       actorId: BigInt(admin.id),
       role: admin.role,
@@ -153,7 +155,7 @@ export class AdminChatroomController {
     @Req() req: AdminRequest,
     @ClientIp() ip: string,
   ): Promise<ChatroomMessageDto[]> {
-    const admin = this.currentAdmin(req);
+    const admin = this.requireSuperadmin(req);
     return this.chatroomService.getMessagesForAdmin(
       uid,
       {
@@ -187,7 +189,15 @@ export class AdminChatroomController {
   }
 
   private adminId(req: AdminRequest): bigint {
-    return BigInt(this.currentAdmin(req).id);
+    return BigInt(this.requireSuperadmin(req).id);
+  }
+
+  private requireSuperadmin(req: AdminRequest): AdminPrincipal {
+    const admin = this.currentAdmin(req);
+    if (admin.role !== 'superadmin') {
+      throw new ForbiddenException('普通管理员只能处理帖子举报');
+    }
+    return admin;
   }
 
   private currentAdmin(req: AdminRequest): AdminPrincipal {

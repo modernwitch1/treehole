@@ -12,16 +12,6 @@ import { Loader2, Lock } from 'lucide-react';
 import { getCurrentAdmin, getStats, adminLogin, adminLogout } from '@/lib/api';
 import type { AdminCurrentUser, AdminStats } from '@/types/admin';
 
-const SUPERADMIN_ONLY_ROUTES = [
-  '/registrations',
-  '/users',
-  '/sensitive-words',
-  '/audit-logs',
-  '/boards',
-  '/appeals',
-  '/trace',
-];
-
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const [user, setUser] = React.useState<AdminCurrentUser | null>(null);
   const [stats, setStats] = React.useState<
@@ -54,10 +44,14 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   }, []);
 
   const refreshStats = React.useCallback(() => {
+    if (user?.role !== 'superadmin') {
+      setStats(undefined);
+      return;
+    }
     getStats()
       .then((s) => setStats(s))
       .catch(() => {});
-  }, []);
+  }, [user?.role]);
 
   React.useEffect(() => {
     checkAuth();
@@ -99,11 +93,9 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     );
   }
 
-  const isSuperadminOnlyRoute = SUPERADMIN_ONLY_ROUTES.some(
-    (route) => pathname === route || pathname.startsWith(`${route}/`),
-  );
-  const content =
-    isSuperadminOnlyRoute && user!.role !== 'superadmin' ? <SuperadminOnlyNotice /> : children;
+  const content = user!.role !== 'superadmin' && pathname !== '/reports'
+    ? <SuperadminOnlyNotice />
+    : children;
 
   // ===== 管理员后台 =====
   return (

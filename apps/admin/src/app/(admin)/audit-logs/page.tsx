@@ -16,7 +16,7 @@ import { UserRoleBadge } from '@/components/status-badge';
 import { listAuditLogs } from '@/lib/api';
 import { MOCK_CHANGED_EVENT } from '@/lib/mock-store';
 import { absoluteTime, relativeTime } from '@/lib/format';
-import type { AdminAuditLog } from '@/types/admin';
+import type { AdminAuditActor, AdminAuditLog } from '@/types/admin';
 
 const ACTION_LABEL: Record<string, string> = {
   'post.hide': '隐藏帖子',
@@ -46,23 +46,44 @@ const ACTION_LABEL: Record<string, string> = {
   'sensitive-word.reload': '热重载词库',
   'post.reveal_author': '查看帖子真实作者',
   'comment.reveal_author': '查看评论真实作者',
+  'moderation-case.decide': '处理审核案件',
+  'moderation-case.reveal_author': '查看案件作者',
+  'registration.identity.list': '查看注册申请身份信息',
+  'registration.screenshot.view': '查看注册凭证截图',
+  'board.applications.view': '查看版块申请',
+  'board.approve': '通过版块申请',
+  'board.reject': '拒绝版块申请',
+  'board.close': '关闭版块',
+  'chatroom.close': '关闭聊天室',
+  'chatroom.identity.view': '查看聊天室成员身份',
+  'chatroom.flagged-identity.view': '查看被标记成员身份',
+  'chatroom-message.flag': '标记聊天室消息',
+  'admin.trace.direct_messages.viewed': '调阅私信记录',
+  'admin.login.failed': '管理员登录失败',
+  'admin.login.succeeded': '管理员登录成功',
+  'admin.logout': '管理员退出登录',
+  'admin.2fa.enabled': '启用双重验证',
+  'admin.2fa.disabled': '停用双重验证',
 };
 
 export default function AuditLogsPage() {
   const [logs, setLogs] = React.useState<AdminAuditLog[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [total, setTotal] = React.useState(0);
+  const [actors, setActors] = React.useState<AdminAuditActor[]>([]);
+  const [actorId, setActorId] = React.useState('');
   const pathname = usePathname();
 
   const reload = React.useCallback(() => {
     setLoading(true);
-    listAuditLogs({ pageSize: 200 })
+    listAuditLogs({ pageSize: 200, actorId: actorId || undefined })
       .then((res) => {
         setLogs(res.items);
         setTotal(res.total);
+        setActors(res.actors);
       })
       .finally(() => setLoading(false));
-  }, []);
+  }, [actorId]);
 
   React.useEffect(() => {
     reload();
@@ -90,7 +111,7 @@ export default function AuditLogsPage() {
         <div>
           <h1 className="text-2xl font-bold tracking-tight">审计日志</h1>
           <p className="text-sm text-muted-foreground">
-            所有管理操作完整可追溯 · 永久保留 · 共 {total} 条
+            仅保留处罚、权限变更、内容处置及身份调阅等重要操作 · 共 {total} 条
           </p>
         </div>
         <button
@@ -101,6 +122,25 @@ export default function AuditLogsPage() {
           刷新
         </button>
       </header>
+
+      <div className="flex items-center gap-2">
+        <label htmlFor="audit-actor" className="text-sm font-medium">
+          操作管理员
+        </label>
+        <select
+          id="audit-actor"
+          value={actorId}
+          onChange={(event) => setActorId(event.target.value)}
+          className="h-9 rounded-md border bg-background px-3 text-sm"
+        >
+          <option value="">全部管理员</option>
+          {actors.map((actor) => (
+            <option key={actor.id} value={actor.id}>
+              {actor.username}（{actor.role}）
+            </option>
+          ))}
+        </select>
+      </div>
 
       <Card>
         <Table>

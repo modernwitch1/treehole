@@ -13,7 +13,6 @@ import {
   Filter,
   Megaphone,
   Clock,
-  Images,
   ShieldAlert,
   Scale,
   FolderPlus,
@@ -55,10 +54,7 @@ const ACTION_LABEL: Record<string, string> = {
   'comment.delete': '删除评论',
   'content.batch.approve': '批量通过内容',
   'content.batch.hide': '批量隐藏内容',
-  'moderation-case.claim': '认领审核案件',
   'moderation-case.decide': '处置审核案件',
-  'upload.approve': '通过图片审核',
-  'upload.reject': '驳回图片',
   'user.suspend': '禁言用户',
   'user.ban': '封禁用户',
   'user.unban': '解封用户',
@@ -122,7 +118,6 @@ export default function DashboardPage() {
     (isSuperadmin && pendingRegs > 0) ||
     openRpts > 0 ||
     stats.pendingReview > 0 ||
-    stats.pendingUploads > 0 ||
     stats.pendingCases > 0 ||
     (canReviewAppeals && stats.pendingAppeals > 0);
 
@@ -160,15 +155,6 @@ export default function DashboardPage() {
               <Link href="/moderation">
                 <ShieldAlert className="size-4" />
                 {stats.pendingCases} 个审核案件
-                <ArrowRight className="size-3.5" />
-              </Link>
-            </Button>
-          )}
-          {stats.pendingUploads > 0 && (
-            <Button asChild size="sm" variant="outline" className="gap-1.5">
-              <Link href="/uploads">
-                <Images className="size-4" />
-                {stats.pendingUploads} 张图片待审
                 <ArrowRight className="size-3.5" />
               </Link>
             </Button>
@@ -237,12 +223,6 @@ export default function DashboardPage() {
             tone="destructive"
             icon={<Scale className="size-5" />}
           />
-          <StatCard
-            label="待审图片"
-            value={stats.pendingUploads}
-            tone="warning"
-            icon={<Images className="size-5" />}
-          />
           {isSuperadmin && (
             <StatCard
               label="待处理申诉"
@@ -274,12 +254,6 @@ export default function DashboardPage() {
             label="审核案件"
             badge={stats.pendingCases}
             tone="destructive"
-          />
-          <QuickAction
-            href="/uploads"
-            icon={Images}
-            label="图片待审"
-            badge={stats.pendingUploads}
           />
           {canReviewAppeals && (
             <QuickAction
