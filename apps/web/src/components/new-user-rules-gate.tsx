@@ -2,6 +2,7 @@
 
 import * as React from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { ShieldCheck, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -30,6 +31,7 @@ export function NewUserRulesGate({
   const [open, setOpen] = React.useState(safety.shouldPrompt);
   const [confirmed, setConfirmed] = React.useState(false);
   const [submitting, setSubmitting] = React.useState(false);
+  const router = useRouter();
   const acknowledgedRef = React.useRef(!safety.shouldPrompt);
 
   async function acknowledge() {
@@ -39,6 +41,7 @@ export function NewUserRulesGate({
       await acknowledgeCommunityRules(safety.policyVersion, 'new_user_daily');
       acknowledgedRef.current = true;
       setOpen(false);
+      router.refresh();
       toast.success('感谢确认，请共同维护友善、安全的校园社区');
     } catch (error) {
       toast.error((error as Error).message || '确认失败，请重试');
@@ -66,9 +69,11 @@ export function NewUserRulesGate({
           <div className="mx-auto mb-2 flex size-12 items-center justify-center rounded-full bg-primary/10 text-primary">
             <ShieldCheck className="size-6" />
           </div>
-          <DialogTitle className="text-center">新用户第 {safety.accountAgeDays + 1} 天安全提示</DialogTitle>
+          <DialogTitle className="text-center">
+            新用户第 {safety.accountAgeDays + 1} 天社区规则确认
+          </DialogTitle>
           <DialogDescription className="text-center">
-            新用户前 7 天每天首次进入时需要确认社区准则
+            新注册账号前 7 天，每天首次进入时需要确认；确认前不能继续使用社区服务
           </DialogDescription>
         </DialogHeader>
 
@@ -80,7 +85,16 @@ export function NewUserRulesGate({
           </ul>
           <p className="text-xs text-muted-foreground">{TRACEABILITY_NOTICE}</p>
           <p className="text-xs text-muted-foreground">
-            对规则判断有异议时可以申诉；正常批评、求助以及医学和教育语境不会仅因包含某个词语而自动处罚。
+            对规则判断有异议时可以申诉；正常批评、求助以及医学和教育语境不会仅因包含某个词语而自动处罚。请打开
+            <Link
+              href="/community-rules"
+              target="_blank"
+              rel="noreferrer"
+              className="mx-1 font-medium text-foreground underline underline-offset-4"
+            >
+              完整社区规则
+            </Link>
+            了解责任边界、举报和申诉流程。
           </p>
         </div>
 
@@ -92,11 +106,16 @@ export function NewUserRulesGate({
             className="mt-0.5"
           />
           <span>
-            我已阅读并愿意遵守
-            <Link href="/rules" className="mx-1 font-medium underline underline-offset-4">
+            我已阅读并同意遵守
+            <Link
+              href="/community-rules"
+              target="_blank"
+              rel="noreferrer"
+              className="mx-1 font-medium underline underline-offset-4"
+            >
               社区规则
             </Link>
-            ，理解违规内容可能被拦截、隐藏并受到账号处罚。
+            ，理解发布者应对自己的内容负责，违规内容可能被拦截、隐藏并受到账号处罚。
           </span>
         </label>
 

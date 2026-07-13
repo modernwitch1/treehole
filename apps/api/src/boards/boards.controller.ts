@@ -23,6 +23,7 @@ export class BoardsController {
   constructor(private readonly boards: BoardsService) {}
 
   @Get()
+  @UseGuards(UserAuthGuard)
   listBoards() {
     return this.boards.listBoards();
   }
@@ -38,6 +39,7 @@ export class BoardsController {
   }
 
   @Get(':slug')
+  @UseGuards(UserAuthGuard)
   getBoard(@Param('slug') slug: string) {
     return this.boards.getBoard(slug);
   }

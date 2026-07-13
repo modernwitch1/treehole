@@ -4,7 +4,6 @@
  */
 
 export type UserRole = 'user' | 'moderator' | 'admin' | 'superadmin';
-
 export interface User {
   id: string;
   username: string;
@@ -153,6 +152,111 @@ export interface CurrentUser extends User {
     shouldPrompt: boolean;
     rulesUrl: string;
   };
+}
+
+// ============================================================
+// 美食模块
+// ============================================================
+
+export interface FoodCanteen {
+  id: string;
+  slug: string;
+  name: string;
+  description?: string | null;
+  windows: FoodWindow[];
+}
+
+export interface FoodMerchant {
+  id: string;
+  slug: string;
+  name: string;
+  description?: string | null;
+  logoUrl?: string | null;
+  contactDisplay?: string | null;
+  status?: 'pending' | 'active' | 'suspended' | 'closed';
+  windows: FoodWindow[];
+}
+
+export interface FoodWindow {
+  id: string;
+  floor: number;
+  name: string;
+  windowNumber?: string | null;
+  locationDescription?: string | null;
+  canteen: { id: string; slug: string; name: string };
+  merchant?: { id: string; slug: string; name: string; logoUrl?: string | null };
+  products?: FoodProduct[];
+}
+
+export interface FoodProduct {
+  id: string;
+  name: string;
+  category?: string | null;
+  description?: string | null;
+  priceCents?: number | null;
+  imageUrl?: string | null;
+  status?: 'draft' | 'pending_review' | 'published' | 'hidden' | 'deleted';
+  isAvailable?: boolean;
+  sortOrder?: number;
+}
+
+export type FoodPostType = 'new_product' | 'promotion' | 'advertisement' | 'notice';
+export type FoodContentStatus = 'published' | 'pending_review' | 'hidden' | 'deleted';
+
+export interface FoodPost {
+  id: string;
+  type: FoodPostType;
+  title: string;
+  contentMd: string;
+  contentHtml: string;
+  status?: FoodContentStatus;
+  coverUrl?: string | null;
+  publishAt: string | null;
+  expiresAt: string | null;
+  isPinned: boolean;
+  createdAt: string;
+  updatedAt: string;
+  merchant: { id: string; slug: string; name: string; logoUrl?: string | null };
+  window: FoodWindow | null;
+}
+
+export interface FoodReviewReply {
+  id: string;
+  contentMd: string;
+  contentHtml: string;
+  status: FoodContentStatus;
+  isOfficial: boolean;
+  merchant: { id: string; slug: string; name: string; logoUrl?: string | null };
+  createdAt: string;
+}
+
+export interface FoodReview {
+  id: string;
+  type: 'taste_review' | 'suggestion';
+  tasteScore: number | null;
+  contentMd: string;
+  contentHtml: string;
+  status?: FoodContentStatus;
+  isAnonymous: boolean;
+  author:
+    | { type: 'anonymous'; displayName: string }
+    | { type: 'user'; username: string; avatarUrl?: string | null };
+  replies: FoodReviewReply[];
+  window: {
+    id: string;
+    name: string;
+    floor: number;
+    canteen: { id: string; slug: string; name: string };
+    merchant: { id: string; slug: string; name: string; logoUrl?: string | null };
+  };
+  createdAt: string;
+}
+
+export interface FoodReviewsPage {
+  averageTasteScore: number | null;
+  reviewCount: number;
+  items: FoodReview[];
+  nextCursor?: string;
 }
 
 export type SanctionType = 'warning' | 'mute' | 'suspension' | 'ban';

@@ -358,7 +358,7 @@ export const MOCK_CURRENT_USER: CurrentUser = {
   accountStatus: 'active',
   createdAt: new Date(2024, 8, 1).toISOString(),
   communitySafety: {
-    policyVersion: '2026-07-11',
+    policyVersion: '2026-07-13',
     accountAgeDays: 365,
     isNewUser: false,
     acknowledgedToday: true,

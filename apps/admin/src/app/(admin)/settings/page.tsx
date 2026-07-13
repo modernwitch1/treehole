@@ -205,8 +205,14 @@ export default function SettingsPage() {
                     size="icon"
                     variant="ghost"
                     onClick={() => {
-                      void navigator.clipboard.writeText(totpSetup.secret);
-                      toast.success('密钥已复制');
+                      void (async () => {
+                        try {
+                          await navigator.clipboard.writeText(totpSetup.secret);
+                          toast.success('密钥已复制');
+                        } catch {
+                          toast.error('复制失败，请手动复制密钥');
+                        }
+                      })();
                     }}
                   >
                     <Copy className="size-4" />

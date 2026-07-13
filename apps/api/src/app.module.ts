@@ -19,6 +19,9 @@ import { MessagesModule } from './messages/messages.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { ChatroomModule } from './chatroom/chatroom.module';
 import { AppealsModule } from './appeals/appeals.module';
+import { FoodModule } from './food/food.module';
+import { MerchantAuthModule } from './merchant-auth/merchant-auth.module';
+import { MerchantModule } from './merchant/merchant.module';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 import { buildPinoConfig } from './common/logger/pino.config';
 
@@ -51,6 +54,9 @@ import { buildPinoConfig } from './common/logger/pino.config';
     NotificationsModule,
     ChatroomModule,
     AppealsModule,
+    FoodModule,
+    MerchantAuthModule,
+    MerchantModule,
   ],
   providers: [
     {

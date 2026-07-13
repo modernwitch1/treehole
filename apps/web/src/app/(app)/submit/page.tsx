@@ -1,6 +1,7 @@
 'use client';
 
 import * as React from 'react';
+import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -126,12 +127,18 @@ export default function SubmitPage() {
       {quotedPost && (
         <Card className="border-primary/20 bg-primary/[0.03]">
           <CardHeader className="pb-3">
-            <CardTitle className="flex items-center gap-2 text-base"><Quote className="size-4" /> 引用帖子发起讨论</CardTitle>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Quote className="size-4" /> 引用帖子发起讨论
+            </CardTitle>
             <CardDescription>你的新帖子会保留指向原帖的引用卡片</CardDescription>
           </CardHeader>
           <CardContent>
             <p className="font-semibold">{quotedPost.title}</p>
-            {quotedPost.contentExcerpt && <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">{quotedPost.contentExcerpt}</p>}
+            {quotedPost.contentExcerpt && (
+              <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">
+                {quotedPost.contentExcerpt}
+              </p>
+            )}
           </CardContent>
         </Card>
       )}
@@ -255,7 +262,9 @@ export default function SubmitPage() {
                 ))}
               </div>
             )}
-            <p className="text-xs text-muted-foreground">所有帖子固定匿名发布，公开名称统一显示为“浙小商”。</p>
+            <p className="text-xs text-muted-foreground">
+              所有帖子固定匿名发布，公开名称统一显示为“浙小商”。
+            </p>
           </CardContent>
         </Card>
 
@@ -269,7 +278,11 @@ export default function SubmitPage() {
             className="mt-0.5"
           />
           <span>
-            我确认内容不含违法低俗、诈骗广告、攻击造谣或隐私泄露信息，并理解匿名展示不等于不可追溯。
+            我确认内容不含违法低俗、诈骗广告、攻击造谣或隐私泄露信息，并已阅读
+            <Link href="/rules" className="mx-1 font-medium underline underline-offset-4">
+              社区规则
+            </Link>
+            ，理解匿名展示不等于不可追溯且发布者需对内容负责。
           </span>
         </label>
 

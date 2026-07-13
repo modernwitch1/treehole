@@ -65,6 +65,9 @@ enum ReportTarget {
   conversation
   direct_message
   chatroom_message
+  food_post
+  food_review
+  food_reply
 
   @@map("report_target")
 }
@@ -138,6 +141,10 @@ enum ModerationSurface {
   direct_message
   chatroom_message
   upload
+  food_post
+  food_product
+  food_review
+  food_reply
 
   @@map("moderation_surface")
 }
@@ -197,6 +204,73 @@ enum AppealStatus {
   @@map("appeal_status")
 }
 
+enum FoodMerchantStatus {
+  pending
+  active
+  suspended
+  closed
+
+  @@map("food_merchant_status")
+}
+
+enum FoodStaffRole {
+  owner
+  editor
+  viewer
+
+  @@map("food_staff_role")
+}
+
+enum FoodStaffStatus {
+  active
+  revoked
+
+  @@map("food_staff_status")
+}
+
+enum FoodStaffAccountStatus {
+  active
+  suspended
+  disabled
+
+  @@map("food_staff_account_status")
+}
+
+enum FoodInvitationStatus {
+  pending
+  accepted
+  expired
+  revoked
+
+  @@map("food_invitation_status")
+}
+
+enum FoodPostType {
+  new_product
+  promotion
+  advertisement
+  notice
+
+  @@map("food_post_type")
+}
+
+enum FoodReviewType {
+  taste_review
+  suggestion
+
+  @@map("food_review_type")
+}
+
+enum FoodProductStatus {
+  draft
+  pending_review
+  published
+  hidden
+  deleted
+
+  @@map("food_product_status")
+}
+
 // ============================================================
 // Users + Auth
 // ============================================================
@@ -228,39 +302,44 @@ model User {
   posts                   Post[]
   comments                Comment[]
   votes                   Vote[]
-  reportsCreated          Report[]              @relation("ReporterReports")
-  reportsHandled          Report[]              @relation("HandlerReports")
-  notifications           Notification[]        @relation("RecipientNotifications")
-  notificationsSent       Notification[]        @relation("ActorNotifications")
-  announcementsPublished  SystemAnnouncement[]  @relation("AnnouncementPublisher")
+  reportsCreated          Report[]                       @relation("ReporterReports")
+  reportsHandled          Report[]                       @relation("HandlerReports")
+  notifications           Notification[]                 @relation("RecipientNotifications")
+  notificationsSent       Notification[]                 @relation("ActorNotifications")
+  announcementsPublished  SystemAnnouncement[]           @relation("AnnouncementPublisher")
   refreshTokens           RefreshToken[]
   emailVerifications      EmailVerification[]
   uploads                 Upload[]
   auditLogs               AuditLog[]
   boardsCreated           Board[]
-  boardsApplied           Board[]               @relation("BoardApplicant")
-  boardsReviewed          Board[]               @relation("BoardReviewer")
+  boardsApplied           Board[]                        @relation("BoardApplicant")
+  boardsReviewed          Board[]                        @relation("BoardReviewer")
   sensitiveWords          SensitiveWord[]
   bannedEmails            BannedEmail[]
-  reviewedRegistrations   RegistrationRequest[] @relation("ReviewerRegistrations")
-  conversationsInitiated  Conversation[]        @relation("ConversationInitiator")
-  conversationsReceived   Conversation[]        @relation("ConversationRecipient")
-  conversationsBlocked    Conversation[]        @relation("ConversationBlocker")
+  reviewedRegistrations   RegistrationRequest[]          @relation("ReviewerRegistrations")
+  conversationsInitiated  Conversation[]                 @relation("ConversationInitiator")
+  conversationsReceived   Conversation[]                 @relation("ConversationRecipient")
+  conversationsBlocked    Conversation[]                 @relation("ConversationBlocker")
   directMessages          DirectMessage[]
-  createdChatrooms        Chatroom[]            @relation("UserCreatedChatrooms")
-  chatroomMessages        ChatroomMessage[]     @relation("UserChatroomMessages")
-  chatroomParticipants    ChatroomParticipant[] @relation("UserChatroomParticipants")
+  createdChatrooms        Chatroom[]                     @relation("UserCreatedChatrooms")
+  chatroomMessages        ChatroomMessage[]              @relation("UserChatroomMessages")
+  chatroomParticipants    ChatroomParticipant[]          @relation("UserChatroomParticipants")
   policyAcceptances       PolicyAcceptance[]
-  moderationCasesAuthored ModerationCase[]      @relation("ModerationCaseAuthor")
-  moderationCasesAssigned ModerationCase[]      @relation("ModerationCaseAssignee")
-  moderationCasesResolved ModerationCase[]      @relation("ModerationCaseResolver")
-  sanctionsReceived       Sanction[]            @relation("SanctionSubject")
-  sanctionsImposed        Sanction[]            @relation("SanctionImposer")
-  sanctionsRevoked        Sanction[]            @relation("SanctionRevoker")
-  appealsSubmitted        Appeal[]              @relation("AppealSubmitter")
-  appealsReviewed         Appeal[]              @relation("AppealReviewer")
-  userBlocksCreated       UserBlock[]           @relation("UserBlocker")
-  userBlocksReceived      UserBlock[]           @relation("UserBlocked")
+  moderationCasesAuthored ModerationCase[]               @relation("ModerationCaseAuthor")
+  moderationCasesAssigned ModerationCase[]               @relation("ModerationCaseAssignee")
+  moderationCasesResolved ModerationCase[]               @relation("ModerationCaseResolver")
+  foodPostsAuthored       FoodPost[]                     @relation("FoodPostUserAuthor")
+  foodReviews             FoodReview[]
+  foodReviewReplies       FoodReviewReply[]              @relation("FoodReviewReplyUserAuthor")
+  foodInvitationsSent     FoodMerchantPortalInvitation[] @relation("FoodPortalInvitationSender")
+  foodPlatformAccount     FoodStaffAccount?              @relation("FoodPlatformAdminAccount")
+  sanctionsReceived       Sanction[]                     @relation("SanctionSubject")
+  sanctionsImposed        Sanction[]                     @relation("SanctionImposer")
+  sanctionsRevoked        Sanction[]                     @relation("SanctionRevoker")
+  appealsSubmitted        Appeal[]                       @relation("AppealSubmitter")
+  appealsReviewed         Appeal[]                       @relation("AppealReviewer")
+  userBlocksCreated       UserBlock[]                    @relation("UserBlocker")
+  userBlocksReceived      UserBlock[]                    @relation("UserBlocked")
 
   @@index([status, createdAt])
   @@map("users")
@@ -438,6 +517,272 @@ model Comment {
   @@index([authorId, createdAt(sort: Desc)])
   // ltree path 的 GIST 索引由原生 SQL 迁移创建
   @@map("comments")
+}
+
+// ============================================================
+// Food module
+// ============================================================
+
+model FoodCanteen {
+  id          BigInt   @id @default(autoincrement())
+  slug        String   @unique @db.VarChar(50)
+  name        String   @db.VarChar(50)
+  description String?
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  windows FoodWindow[]
+
+  @@index([isActive, name])
+  @@map("food_canteens")
+}
+
+model FoodMerchant {
+  id             BigInt             @id @default(autoincrement())
+  slug           String             @unique @db.VarChar(80)
+  name           String             @db.VarChar(100)
+  description    String?
+  logoUrl        String?            @map("logo_url")
+  contactDisplay String?            @map("contact_display") @db.VarChar(200)
+  status         FoodMerchantStatus @default(pending)
+  approvedBy     BigInt?            @map("approved_by")
+  approvedAt     DateTime?          @map("approved_at") @db.Timestamptz
+  createdAt      DateTime           @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt      DateTime           @updatedAt @map("updated_at") @db.Timestamptz
+
+  windows           FoodWindow[]
+  portalStaff       FoodMerchantPortalStaff[]
+  portalInvitations FoodMerchantPortalInvitation[]
+  posts             FoodPost[]
+  products          FoodProduct[]
+  reviewReplies     FoodReviewReply[]
+
+  @@index([status, updatedAt(sort: Desc)])
+  @@map("food_merchants")
+}
+
+model FoodWindow {
+  id                  BigInt   @id @default(autoincrement())
+  merchantId          BigInt   @map("merchant_id")
+  canteenId           BigInt   @map("canteen_id")
+  floor               Int      @default(2) @db.SmallInt
+  name                String   @db.VarChar(100)
+  windowNumber        String?  @map("window_number") @db.VarChar(30)
+  locationDescription String?  @map("location_description") @db.VarChar(200)
+  isActive            Boolean  @default(true) @map("is_active")
+  createdAt           DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt           DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  merchant FoodMerchant  @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  canteen  FoodCanteen   @relation(fields: [canteenId], references: [id], onDelete: Restrict)
+  posts    FoodPost[]
+  products FoodProduct[]
+  reviews  FoodReview[]
+
+  @@unique([canteenId, floor, name], map: "food_windows_canteen_floor_name_key")
+  @@index([merchantId, isActive])
+  @@index([canteenId, floor, isActive])
+  @@map("food_windows")
+}
+
+model FoodStaffAccount {
+  id              BigInt                 @id @default(autoincrement())
+  email           String                 @unique @db.Citext
+  displayName     String                 @map("display_name") @db.VarChar(80)
+  passwordHash    String                 @map("password_hash")
+  status          FoodStaffAccountStatus @default(active)
+  userId          BigInt?                @unique @map("user_id")
+  isPlatformAdmin Boolean                @default(false) @map("is_platform_admin")
+  lastLoginAt     DateTime?              @map("last_login_at") @db.Timestamptz
+  lastLoginIp     String?                @map("last_login_ip") @db.Inet
+  createdAt       DateTime               @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt       DateTime               @updatedAt @map("updated_at") @db.Timestamptz
+
+  memberships   FoodMerchantPortalStaff[]
+  invitations   FoodMerchantPortalInvitation[] @relation("FoodPortalInvitationAccount")
+  postsAuthored FoodPost[]                     @relation("FoodPostStaffAuthor")
+  reviewReplies FoodReviewReply[]              @relation("FoodReviewReplyStaffAuthor")
+  sessions      FoodMerchantSession[]
+  uploads       Upload[]
+  forumUser     User?                          @relation("FoodPlatformAdminAccount", fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([status, createdAt(sort: Desc)])
+  @@map("food_staff_accounts")
+}
+
+model FoodMerchantPortalStaff {
+  id         BigInt          @id @default(autoincrement())
+  merchantId BigInt          @map("merchant_id")
+  accountId  BigInt          @map("account_id")
+  role       FoodStaffRole   @default(editor)
+  status     FoodStaffStatus @default(active)
+  joinedAt   DateTime        @default(now()) @map("joined_at") @db.Timestamptz
+  revokedAt  DateTime?       @map("revoked_at") @db.Timestamptz
+  createdAt  DateTime        @default(now()) @map("created_at") @db.Timestamptz
+
+  merchant FoodMerchant     @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  account  FoodStaffAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@unique([merchantId, accountId], map: "food_portal_staff_merchant_account_key")
+  @@index([accountId, status])
+  @@map("food_merchant_portal_staff")
+}
+
+model FoodMerchantPortalInvitation {
+  id                String               @id @default(uuid()) @db.Uuid
+  merchantId        BigInt               @map("merchant_id")
+  email             String               @db.Citext
+  tokenHash         String               @unique @map("token_hash") @db.VarChar(128)
+  role              FoodStaffRole        @default(editor)
+  status            FoodInvitationStatus @default(pending)
+  invitedBy         BigInt               @map("invited_by")
+  acceptedAccountId BigInt?              @map("accepted_account_id")
+  expiresAt         DateTime             @map("expires_at") @db.Timestamptz
+  acceptedAt        DateTime?            @map("accepted_at") @db.Timestamptz
+  revokedAt         DateTime?            @map("revoked_at") @db.Timestamptz
+  createdAt         DateTime             @default(now()) @map("created_at") @db.Timestamptz
+
+  merchant        FoodMerchant      @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  sender          User              @relation("FoodPortalInvitationSender", fields: [invitedBy], references: [id], onDelete: Restrict)
+  acceptedAccount FoodStaffAccount? @relation("FoodPortalInvitationAccount", fields: [acceptedAccountId], references: [id], onDelete: SetNull)
+
+  @@index([merchantId, status, createdAt(sort: Desc)])
+  @@index([email, status])
+  @@map("food_merchant_portal_invitations")
+}
+
+model FoodMerchantSession {
+  id        String    @id @default(uuid()) @db.Uuid
+  accountId BigInt    @map("account_id")
+  tokenHash String    @unique @map("token_hash") @db.VarChar(128)
+  familyId  String    @map("family_id") @db.Uuid
+  parentId  String?   @map("parent_id") @db.Uuid
+  userAgent String?   @map("user_agent")
+  ip        String?   @db.Inet
+  expiresAt DateTime  @map("expires_at") @db.Timestamptz
+  revokedAt DateTime? @map("revoked_at") @db.Timestamptz
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz
+
+  account  FoodStaffAccount      @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  parent   FoodMerchantSession?  @relation("FoodMerchantSessionRotation", fields: [parentId], references: [id], onDelete: SetNull)
+  children FoodMerchantSession[] @relation("FoodMerchantSessionRotation")
+
+  @@index([accountId, revokedAt, expiresAt])
+  @@index([familyId, revokedAt])
+  @@map("food_merchant_sessions")
+}
+
+model FoodPost {
+  id               BigInt        @id @default(autoincrement())
+  merchantId       BigInt        @map("merchant_id")
+  windowId         BigInt?       @map("window_id")
+  authorId         BigInt?       @map("author_id")
+  staffAccountId   BigInt?       @map("staff_account_id")
+  type             FoodPostType
+  title            String        @db.VarChar(200)
+  contentMd        String        @map("content_md")
+  contentHtml      String        @map("content_html")
+  status           ContentStatus @default(pending_review)
+  coverUrl         String?       @map("cover_url")
+  publishAt        DateTime?     @map("publish_at") @db.Timestamptz
+  expiresAt        DateTime?     @map("expires_at") @db.Timestamptz
+  isPinned         Boolean       @default(false) @map("is_pinned")
+  moderationLabels Json?         @map("moderation_labels")
+  contentHash      String?       @map("content_hash") @db.VarChar(64)
+  legalHold        Boolean       @default(false) @map("legal_hold")
+  createdAt        DateTime      @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt        DateTime      @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt        DateTime?     @map("deleted_at") @db.Timestamptz
+
+  merchant    FoodMerchant      @relation(fields: [merchantId], references: [id], onDelete: Restrict)
+  window      FoodWindow?       @relation(fields: [windowId], references: [id], onDelete: SetNull)
+  author      User?             @relation("FoodPostUserAuthor", fields: [authorId], references: [id], onDelete: Restrict)
+  staffAuthor FoodStaffAccount? @relation("FoodPostStaffAuthor", fields: [staffAccountId], references: [id], onDelete: Restrict)
+
+  @@index([status, publishAt, expiresAt, createdAt(sort: Desc)])
+  @@index([merchantId, status, createdAt(sort: Desc)])
+  @@index([windowId, status, createdAt(sort: Desc)])
+  @@index([staffAccountId, createdAt(sort: Desc)])
+  @@map("food_posts")
+}
+
+model FoodReview {
+  id               BigInt         @id @default(autoincrement())
+  windowId         BigInt         @map("window_id")
+  authorId         BigInt         @map("author_id")
+  type             FoodReviewType
+  tasteScore       Int?           @map("taste_score") @db.SmallInt
+  contentMd        String         @map("content_md")
+  contentHtml      String         @map("content_html")
+  isAnonymous      Boolean        @default(true) @map("is_anonymous")
+  status           ContentStatus  @default(published)
+  moderationLabels Json?          @map("moderation_labels")
+  contentHash      String?        @map("content_hash") @db.VarChar(64)
+  legalHold        Boolean        @default(false) @map("legal_hold")
+  createdAt        DateTime       @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt        DateTime       @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt        DateTime?      @map("deleted_at") @db.Timestamptz
+
+  window  FoodWindow        @relation(fields: [windowId], references: [id], onDelete: Cascade)
+  author  User              @relation(fields: [authorId], references: [id], onDelete: Restrict)
+  replies FoodReviewReply[]
+
+  @@index([windowId, status, createdAt(sort: Desc)])
+  @@index([authorId, createdAt(sort: Desc)])
+  @@map("food_reviews")
+}
+
+model FoodReviewReply {
+  id               BigInt        @id @default(autoincrement())
+  reviewId         BigInt        @map("review_id")
+  merchantId       BigInt        @map("merchant_id")
+  authorId         BigInt?       @map("author_id")
+  staffAccountId   BigInt?       @map("staff_account_id")
+  contentMd        String        @map("content_md")
+  contentHtml      String        @map("content_html")
+  status           ContentStatus @default(pending_review)
+  moderationLabels Json?         @map("moderation_labels")
+  contentHash      String?       @map("content_hash") @db.VarChar(64)
+  legalHold        Boolean       @default(false) @map("legal_hold")
+  createdAt        DateTime      @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt        DateTime      @updatedAt @map("updated_at") @db.Timestamptz
+
+  review      FoodReview        @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+  merchant    FoodMerchant      @relation(fields: [merchantId], references: [id], onDelete: Restrict)
+  author      User?             @relation("FoodReviewReplyUserAuthor", fields: [authorId], references: [id], onDelete: Restrict)
+  staffAuthor FoodStaffAccount? @relation("FoodReviewReplyStaffAuthor", fields: [staffAccountId], references: [id], onDelete: Restrict)
+
+  @@index([reviewId, status, createdAt])
+  @@index([merchantId, status, createdAt(sort: Desc)])
+  @@index([staffAccountId, createdAt(sort: Desc)])
+  @@map("food_review_replies")
+}
+
+model FoodProduct {
+  id               BigInt            @id @default(autoincrement())
+  merchantId       BigInt            @map("merchant_id")
+  windowId         BigInt?           @map("window_id")
+  name             String            @db.VarChar(120)
+  category         String?           @db.VarChar(50)
+  description      String?
+  priceCents       Int?              @map("price_cents")
+  imageUrl         String?           @map("image_url")
+  status           FoodProductStatus @default(draft)
+  isAvailable      Boolean           @default(true) @map("is_available")
+  sortOrder        Int               @default(0) @map("sort_order")
+  moderationLabels Json?             @map("moderation_labels")
+  contentHash      String?           @map("content_hash") @db.VarChar(64)
+  createdAt        DateTime          @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt        DateTime          @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt        DateTime?         @map("deleted_at") @db.Timestamptz
+
+  merchant FoodMerchant @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  window   FoodWindow?  @relation(fields: [windowId], references: [id], onDelete: SetNull)
+
+  @@index([merchantId, status, sortOrder])
+  @@index([windowId, status, sortOrder])
+  @@map("food_products")
 }
 
 // ============================================================
@@ -733,24 +1078,27 @@ model RegistrationRequest {
 // ============================================================
 
 model Upload {
-  id               String           @id @default(uuid()) @db.Uuid
-  userId           BigInt           @map("user_id")
-  user             User             @relation(fields: [userId], references: [id], onDelete: Cascade)
-  s3Key            String           @unique @map("s3_key")
-  thumbnailKey     String?          @map("thumbnail_key")
-  mimeType         String           @map("mime_type") @db.VarChar(64)
-  sizeBytes        Int              @map("size_bytes")
+  id               String            @id @default(uuid()) @db.Uuid
+  userId           BigInt?           @map("user_id")
+  staffAccountId   BigInt?           @map("staff_account_id")
+  user             User?             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  staffAccount     FoodStaffAccount? @relation(fields: [staffAccountId], references: [id], onDelete: Cascade)
+  s3Key            String            @unique @map("s3_key")
+  thumbnailKey     String?           @map("thumbnail_key")
+  mimeType         String            @map("mime_type") @db.VarChar(64)
+  sizeBytes        Int               @map("size_bytes")
   width            Int?
   height           Int?
-  moderationStatus ModerationStatus @default(pending) @map("moderation_status")
-  moderationLabels Json?            @map("moderation_labels")
-  contentHash      String?          @map("content_hash") @db.VarChar(64)
-  legalHold        Boolean          @default(false) @map("legal_hold")
-  attachedToType   String?          @map("attached_to_type") @db.VarChar(32)
-  attachedToId     BigInt?          @map("attached_to_id")
-  createdAt        DateTime         @default(now()) @map("created_at") @db.Timestamptz
+  moderationStatus ModerationStatus  @default(pending) @map("moderation_status")
+  moderationLabels Json?             @map("moderation_labels")
+  contentHash      String?           @map("content_hash") @db.VarChar(64)
+  legalHold        Boolean           @default(false) @map("legal_hold")
+  attachedToType   String?           @map("attached_to_type") @db.VarChar(32)
+  attachedToId     BigInt?           @map("attached_to_id")
+  createdAt        DateTime          @default(now()) @map("created_at") @db.Timestamptz
 
   @@index([userId, createdAt])
+  @@index([staffAccountId, createdAt])
   @@index([moderationStatus])
   @@index([attachedToType, attachedToId])
   @@map("uploads")

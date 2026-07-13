@@ -149,12 +149,19 @@ export class ModerationService {
     const blocked =
       matched.some((rule) => rule.action === 'block') ||
       [...reasonCodes].some((reason) => automaticBlockReasons.has(reason));
-    const hasRiskSignal =
-      matched.some((rule) => rule.action === 'review') || reasonCodes.size > 0;
+    const hasRiskSignal = matched.some((rule) => rule.action === 'review') || reasonCodes.size > 0;
     const severeCategory = matched.some(
       (rule) => rule.category === 'political' || rule.category === 'porn',
     );
-    const riskLevel = blocked ? 4 : hasRiskSignal ? (severeCategory ? 4 : 3) : matched.length ? 1 : 0;
+    const riskLevel = blocked
+      ? 4
+      : hasRiskSignal
+        ? severeCategory
+          ? 4
+          : 3
+        : matched.length
+          ? 1
+          : 0;
 
     return {
       content: moderated,

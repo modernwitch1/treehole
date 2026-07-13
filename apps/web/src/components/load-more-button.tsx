@@ -17,21 +17,12 @@ export function LoadMoreButton({
   label = '加载更多',
 }: LoadMoreButtonProps) {
   if (!hasMore) {
-    return (
-      <div className="py-4 text-center text-sm text-muted-foreground">
-        没有更多了
-      </div>
-    );
+    return <div className="py-4 text-center text-sm text-muted-foreground">没有更多了</div>;
   }
 
   return (
     <div className="py-4 text-center">
-      <Button
-        variant="outline"
-        onClick={onLoadMore}
-        disabled={isLoading}
-        className="min-w-[120px]"
-      >
+      <Button variant="outline" onClick={onLoadMore} disabled={isLoading} className="min-w-[120px]">
         {isLoading ? (
           <>
             <Loader2 className="mr-2 h-4 w-4 animate-spin" />

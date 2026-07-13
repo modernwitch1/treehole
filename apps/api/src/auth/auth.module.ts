@@ -7,10 +7,12 @@ import { PrismaModule } from '../prisma/prisma.module';
 import { AppConfigModule } from '../config/config.module';
 import { AppConfig } from '../config/app.config';
 import { UserAuthGuard } from './user-auth.guard';
+import { RedisModule } from '../redis/redis.module';
 
 @Module({
   imports: [
     PrismaModule,
+    RedisModule,
     JwtModule.registerAsync({
       imports: [AppConfigModule],
       inject: [AppConfig],

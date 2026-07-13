@@ -10,7 +10,10 @@ import type { Course } from '@/types/api';
 export const dynamic = 'force-dynamic';
 
 const PAGE_SIZE = 24;
-const DEPARTMENTS = ['全部', ...Array.from(new Set(COURSE_GUIDE_COURSES.map((course) => course.category)))];
+const DEPARTMENTS = [
+  '全部',
+  ...Array.from(new Set(COURSE_GUIDE_COURSES.map((course) => course.category))),
+];
 const SORT_OPTIONS = [
   { value: 'reviews', label: '历史评价最多' },
   { value: 'name', label: '课程名称' },
@@ -116,7 +119,10 @@ export default async function CompassPage({
             找到 {filteredCourses.length} 门课程
           </p>
         </div>
-        <div className="flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none]" aria-label="课程分类">
+        <div
+          className="flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none]"
+          aria-label="课程分类"
+        >
           {DEPARTMENTS.map((department) => {
             const active = category === department;
             return (
@@ -155,26 +161,38 @@ export default async function CompassPage({
       )}
 
       {totalPages > 1 && (
-        <nav className="flex items-center justify-between border-t border-border/70 pt-5" aria-label="课程分页">
+        <nav
+          className="flex items-center justify-between border-t border-border/70 pt-5"
+          aria-label="课程分页"
+        >
           <Button asChild={page > 1} variant="outline" size="sm" disabled={page <= 1}>
             {page > 1 ? (
               <Link href={buildCompassHref(currentParams, { page: String(page - 1) })}>
                 <ChevronLeft className="size-4" /> 上一页
               </Link>
             ) : (
-              <span><ChevronLeft className="size-4" /> 上一页</span>
+              <span>
+                <ChevronLeft className="size-4" /> 上一页
+              </span>
             )}
           </Button>
           <span className="text-sm tabular-nums text-muted-foreground">
             第 {page} / {totalPages} 页
           </span>
-          <Button asChild={page < totalPages} variant="outline" size="sm" disabled={page >= totalPages}>
+          <Button
+            asChild={page < totalPages}
+            variant="outline"
+            size="sm"
+            disabled={page >= totalPages}
+          >
             {page < totalPages ? (
               <Link href={buildCompassHref(currentParams, { page: String(page + 1) })}>
                 下一页 <ChevronRight className="size-4" />
               </Link>
             ) : (
-              <span>下一页 <ChevronRight className="size-4" /></span>
+              <span>
+                下一页 <ChevronRight className="size-4" />
+              </span>
             )}
           </Button>
         </nav>
@@ -185,7 +203,11 @@ export default async function CompassPage({
 
 function CourseCard({ course }: { course: Course }) {
   return (
-    <Link href={`/compass/${course.id}`} prefetch={false} className="group block rounded-2xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+    <Link
+      href={`/compass/${course.id}`}
+      prefetch={false}
+      className="group block rounded-2xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+    >
       <Card className="h-full transition-all group-hover:-translate-y-0.5 group-hover:border-primary/25 group-hover:shadow-md">
         <CardContent className="p-4">
           <div className="flex items-start justify-between gap-3">

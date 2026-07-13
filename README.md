@@ -1,6 +1,6 @@
 # 浙工商树洞
 
-浙江工商大学校园匿名树洞。生产模式下所有核心功能走真实 API，公开论坛只展示匿名身份；管理员后台通过 `manage.unidating.top` 访问，只有全站唯一的超级管理员可查看真实作者且每次访问都会留下审计记录。
+浙江工商大学校园匿名树洞。生产模式下所有核心功能走真实 API，公开论坛只展示匿名身份；管理员后台通过 `admin.unidating.top` 访问，只有全站唯一的超级管理员可查看真实作者且每次访问都会留下审计记录。
 
 ```
 zjgsu-forum/          ← monorepo 根
@@ -79,7 +79,7 @@ pnpm dev:admin
 # 浏览器打开 http://localhost:3002
 ```
 
-后台默认蓝色 accent（与论坛橙色区分）+ 深色主题。生产环境请使用 `https://manage.unidating.top`，并确保 `NEXT_PUBLIC_USE_MOCK=false`。
+后台默认蓝色 accent（与论坛橙色区分）+ 深色主题。生产环境请使用 `https://admin.unidating.top`，并确保 `NEXT_PUBLIC_USE_MOCK=false`。
 
 - 仪表盘：总用户/帖子/评论/举报数 + 30 天趋势图（recharts）+ 待处理举报队列预览 + 最近管理动作
 - 用户管理：搜索 + 状态/角色筛选 + 表格 + 每行 ⋯ 菜单（禁言/封禁/解封/调权限,带确认对话框）
@@ -210,3 +210,5 @@ pnpm dev:web
 
 - 开发环境 `MAIL_DRIVER=smtp` + `SMTP_HOST=localhost` + `SMTP_PORT=1025`
 - 收件箱：http://localhost:1080
+
+生产环境的 Brevo、Mailjet、SMTP2GO、Mailgun、Resend 配置、域名验证和故障排查见：[邮件服务商注册与配置手册](docs/邮件服务商注册与配置手册.md)。

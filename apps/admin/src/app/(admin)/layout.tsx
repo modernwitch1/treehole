@@ -33,9 +33,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     setLoading(true);
     try {
       const u = await getCurrentAdmin();
-      if (u) {
-        setUser(u);
-      }
+      setUser(u);
     } catch {
       // 未认证
     } finally {
@@ -93,9 +91,11 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     );
   }
 
-  const content = user!.role !== 'superadmin' && pathname !== '/reports'
-    ? <SuperadminOnlyNotice />
-    : children;
+  const content = isRouteAllowed(user!.role, pathname) ? (
+    children
+  ) : (
+    <AdminAccessNotice role={user!.role} />
+  );
 
   // ===== 管理员后台 =====
   return (
@@ -111,15 +111,26 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   );
 }
 
-function SuperadminOnlyNotice() {
+function isRouteAllowed(role: AdminCurrentUser['role'], pathname: string): boolean {
+  if (role === 'superadmin') return true;
+  if (pathname === '/' || pathname.startsWith('/reports') || pathname.startsWith('/settings')) {
+    return true;
+  }
+  return role !== 'moderator' && pathname.startsWith('/food');
+}
+
+function AdminAccessNotice({ role }: { role: AdminCurrentUser['role'] }) {
+  const isModerator = role === 'moderator';
   return (
     <Card className="mx-auto mt-12 max-w-xl">
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
-          <Lock className="size-5 text-destructive" /> 仅超级管理员可访问
+          <Lock className="size-5 text-destructive" /> 当前账号没有该页面权限
         </CardTitle>
         <CardDescription>
-          此页面涉及身份资料、角色、规则配置或安全审计。普通管理员和版主仅可使用日常举报与内容治理功能。
+          {isModerator
+            ? '版主目前可以处理举报和账号安全设置；商家管理、内容审核和身份资料需要更高权限。'
+            : '普通管理员可以处理举报、美食模块和账号安全设置；涉及全站内容、身份资料和审计的页面需要超级管理员权限。'}
         </CardDescription>
       </CardHeader>
     </Card>
@@ -181,16 +192,18 @@ function LoginForm({ onLoggedIn }: { onLoggedIn: () => void }) {
               这里是浙工商树洞的运营中枢。所有操作都会被完整写入审计日志，请谨慎使用每一项权限。
             </p>
             <ul className="space-y-2.5 text-sm">
-              {['所有管理动作永久可追溯', '后台登录支持个人二次验证', '真实身份仅超级管理员可调阅'].map(
-                (tip) => (
-                  <li key={tip} className="flex items-center gap-2.5 text-muted-foreground">
-                    <span className="flex size-5 items-center justify-center rounded-full bg-primary/15">
-                      <Lock className="size-3 text-primary" />
-                    </span>
-                    {tip}
-                  </li>
-                ),
-              )}
+              {[
+                '所有管理动作永久可追溯',
+                '后台登录支持个人二次验证',
+                '真实身份仅超级管理员可调阅',
+              ].map((tip) => (
+                <li key={tip} className="flex items-center gap-2.5 text-muted-foreground">
+                  <span className="flex size-5 items-center justify-center rounded-full bg-primary/15">
+                    <Lock className="size-3 text-primary" />
+                  </span>
+                  {tip}
+                </li>
+              ))}
             </ul>
           </div>
 

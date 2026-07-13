@@ -338,10 +338,10 @@ export default function ModerationPage() {
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="0">全部等级</SelectItem>
-                  <SelectItem value="1">1 级及以上</SelectItem>
-                  <SelectItem value="2">2 级及以上</SelectItem>
+              <SelectContent>
+                <SelectItem value="0">全部等级</SelectItem>
+                <SelectItem value="1">1 级及以上</SelectItem>
+                <SelectItem value="2">2 级及以上</SelectItem>
                 <SelectItem value="3">3 级及以上</SelectItem>
                 <SelectItem value="4">仅 4 级</SelectItem>
               </SelectContent>
@@ -409,13 +409,17 @@ export default function ModerationPage() {
 
                   <div className="space-y-2">
                     <div className="flex flex-wrap items-center gap-1.5">
-                      <span className="text-xs text-muted-foreground">命中原因（reasonCodes）：</span>
+                      <span className="text-xs text-muted-foreground">
+                        命中原因（reasonCodes）：
+                      </span>
                       {reasonCodes.length > 0 ? (
                         reasonCodes.map((reason, index) => (
                           <Badge key={`${reason}-${index}`} variant="warning" title={reason}>
                             {REASON_LABEL[reason] ?? reason}
                             {REASON_LABEL[reason] && (
-                              <span className="ml-1 font-mono text-[10px] opacity-70">{reason}</span>
+                              <span className="ml-1 font-mono text-[10px] opacity-70">
+                                {reason}
+                              </span>
                             )}
                           </Badge>
                         ))
@@ -502,8 +506,7 @@ export default function ModerationPage() {
                 <SelectContent>
                   {Object.entries(DECISION_LABEL)
                     .filter(
-                      ([value]) =>
-                        !['ban', 'delete'].includes(value) || canUsePermanentActions,
+                      ([value]) => !['ban', 'delete'].includes(value) || canUsePermanentActions,
                     )
                     .filter(
                       ([value]) =>
@@ -598,7 +601,9 @@ export default function ModerationPage() {
                   学号 {revealedIdentity.studentId ?? '未关联'}
                 </p>
               </div>
-              <p className="text-xs text-muted-foreground">关闭窗口后，本页面会立即清除身份信息。</p>
+              <p className="text-xs text-muted-foreground">
+                关闭窗口后，本页面会立即清除身份信息。
+              </p>
             </div>
           ) : (
             <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-4 text-sm leading-6">

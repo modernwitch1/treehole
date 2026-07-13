@@ -12,7 +12,13 @@ const compat = new FlatCompat({
 export default [
   ...compat.extends('next/core-web-vitals', 'next/typescript'),
   {
-    ignores: ['.next/**', 'node_modules/**', 'dist/**'],
+    ignores: [
+      '.next/**',
+      'node_modules/**',
+      'dist/**',
+      'next-env.d.ts',
+      'eslint.config.mjs',
+    ],
   },
   {
     rules: {

@@ -45,10 +45,27 @@ export default function ReportsPage() {
     const sequence = ++requestSequence.current;
     setLoading(true);
     Promise.all([
-      listReports({ status, category: categoryParam === 'all' ? undefined : categoryParam, page, pageSize: 20 }),
-      listReports({ status: 'open', category: categoryParam === 'all' ? undefined : categoryParam, pageSize: 1 }),
-      listReports({ status: 'resolved', category: categoryParam === 'all' ? undefined : categoryParam, pageSize: 1 }),
-      listReports({ status: 'rejected', category: categoryParam === 'all' ? undefined : categoryParam, pageSize: 1 }),
+      listReports({
+        status,
+        category: categoryParam === 'all' ? undefined : categoryParam,
+        page,
+        pageSize: 20,
+      }),
+      listReports({
+        status: 'open',
+        category: categoryParam === 'all' ? undefined : categoryParam,
+        pageSize: 1,
+      }),
+      listReports({
+        status: 'resolved',
+        category: categoryParam === 'all' ? undefined : categoryParam,
+        pageSize: 1,
+      }),
+      listReports({
+        status: 'rejected',
+        category: categoryParam === 'all' ? undefined : categoryParam,
+        pageSize: 1,
+      }),
     ])
       .then(([cur, op, re, rj]) => {
         if (sequence !== requestSequence.current) return;
@@ -66,7 +83,7 @@ export default function ReportsPage() {
       .finally(() => {
         if (sequence === requestSequence.current) setLoading(false);
       });
-  }, [page, status]);
+  }, [categoryParam, page, status]);
 
   React.useEffect(() => {
     setPage(1);

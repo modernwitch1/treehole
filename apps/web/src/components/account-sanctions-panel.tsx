@@ -94,9 +94,7 @@ export function AccountSanctionsPanel() {
                         : '维持原处理'}
                   </p>
                   {item.appeal.reviewNote && (
-                    <p className="mt-1 text-muted-foreground">
-                      复核说明：{item.appeal.reviewNote}
-                    </p>
+                    <p className="mt-1 text-muted-foreground">复核说明：{item.appeal.reviewNote}</p>
                   )}
                 </div>
               ) : item.status !== 'revoked' ? (
@@ -123,7 +121,9 @@ export function AccountSanctionsPanel() {
                     className="w-full resize-y rounded-md border bg-background p-3 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
                   />
                   <div className="flex items-center justify-between">
-                    <span className="text-xs text-muted-foreground">{reason.trim().length} / 2000</span>
+                    <span className="text-xs text-muted-foreground">
+                      {reason.trim().length} / 2000
+                    </span>
                     <div className="flex gap-2">
                       <Button size="sm" variant="ghost" onClick={() => setSelectedId(null)}>
                         取消

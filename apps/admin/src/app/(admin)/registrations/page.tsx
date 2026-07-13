@@ -35,6 +35,7 @@ export default function RegistrationsPage() {
   React.useEffect(() => {
     listRegistrations()
       .then(setRequests)
+      .catch((error) => toast.error((error as Error).message || '注册申请加载失败'))
       .finally(() => setLoading(false));
   }, []);
 
@@ -75,7 +76,11 @@ export default function RegistrationsPage() {
 
   async function handleBulkApprove() {
     if (pendingItems.length === 0) return;
-    if (!confirm(`确认一键通过 ${pendingItems.length} 条待审批申请？\n\n仅建议在确认全部为学生本人时使用。`))
+    if (
+      !confirm(
+        `确认一键通过 ${pendingItems.length} 条待审批申请？\n\n仅建议在确认全部为学生本人时使用。`,
+      )
+    )
       return;
     setBulkRunning(true);
     let ok = 0;
@@ -261,10 +266,7 @@ function RegistrationCard({
 
   return (
     <Card
-      className={cn(
-        urgent && 'border-yellow-500/50',
-        expired && 'border-red-500/50 opacity-60',
-      )}
+      className={cn(urgent && 'border-yellow-500/50', expired && 'border-red-500/50 opacity-60')}
     >
       <CardContent className="p-4">
         <div className="flex items-start justify-between gap-4">
@@ -314,7 +316,7 @@ function RegistrationCard({
             {req.screenshotUrl && (
               <div className="pt-1">
                 <Button variant="outline" size="sm" className="gap-1.5 text-xs" asChild>
-                  <a href={req.screenshotUrl} target="_blank" rel="noopener">
+                  <a href={req.screenshotUrl} target="_blank" rel="noopener noreferrer">
                     <ExternalLink className="size-3.5" />
                     查看截图
                   </a>
@@ -418,4 +420,3 @@ function Row({ label, value }: { label: string; value: React.ReactNode }) {
     </div>
   );
 }
-

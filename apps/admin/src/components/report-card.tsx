@@ -40,6 +40,9 @@ const TARGET_TYPE_LABEL: Record<ReportTargetType, string> = {
   conversation: '私信会话',
   direct_message: '私信消息',
   chatroom_message: '聊天房消息',
+  food_post: '美食动态',
+  food_review: '美食评价',
+  food_reply: '商家回复',
 };
 
 export function ReportCard({ report, onChanged }: { report: AdminReport; onChanged?: () => void }) {

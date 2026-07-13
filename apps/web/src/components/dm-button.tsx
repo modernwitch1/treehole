@@ -1,6 +1,7 @@
 'use client';
 
 import * as React from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { MessageCircle, Send, Info, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -164,7 +165,11 @@ export function DmButton({
             className="mt-0.5"
           />
           <span>
-            我确认本条私信不含违法低俗、诈骗广告、攻击骚扰或隐私泄露内容，并知悉违规内容可能被拦截、处罚和依法依规溯源。
+            我确认本条私信不含违法低俗、诈骗广告、攻击骚扰或隐私泄露内容，并已阅读
+            <Link href="/rules" className="mx-1 font-medium underline underline-offset-4">
+              社区规则
+            </Link>
+            ，知悉违规内容可能被拦截、处罚和依法依规溯源。
           </span>
         </label>
 

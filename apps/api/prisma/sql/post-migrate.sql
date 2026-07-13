@@ -13,18 +13,15 @@ CREATE EXTENSION IF NOT EXISTS pgcrypto;
 CREATE EXTENSION IF NOT EXISTS pg_trgm;
 
 -- ============================================================
--- 2. users.email 必须是校园邮箱
---    域名通过应用层 + 数据库 CHECK 双重保险
+-- 2. 普通论坛账号必须是校园邮箱；商家后台账号存放在独立表中
+--    学生注册由应用层 + 数据库 CHECK 双重保险约束
 -- ============================================================
 DO $$
 BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_constraint WHERE conname = 'users_email_campus_domain_check'
-  ) THEN
-    ALTER TABLE users
-      ADD CONSTRAINT users_email_campus_domain_check
-      CHECK (email ~* '^[^@]+@pop\.zjgsu\.edu\.cn$');
-  END IF;
+  ALTER TABLE users DROP CONSTRAINT IF EXISTS users_email_campus_domain_check;
+  ALTER TABLE users
+    ADD CONSTRAINT users_email_campus_domain_check
+    CHECK (deleted_at IS NOT NULL OR email ~* '^[^@]+@pop\.zjgsu\.edu\.cn$');
 END $$;
 
 -- ============================================================

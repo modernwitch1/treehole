@@ -70,10 +70,7 @@ export default function UsersPage() {
       <div className="flex flex-wrap items-center gap-2">
         {STATUS_CHIPS.map((c) => {
           const active = (status ?? 'all') === c.value;
-          const count =
-            c.value === 'all'
-              ? users.length
-              : statusCounts[c.value] ?? 0;
+          const count = c.value === 'all' ? users.length : (statusCounts[c.value] ?? 0);
           // 构建 URL，保留 q 与 role，仅切换 status
           const p = new URLSearchParams(params.toString());
           if (c.value === 'all') p.delete('status');

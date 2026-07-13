@@ -6,19 +6,29 @@
   "license": "UNLICENSED",
   "packageManager": "pnpm@9.15.0",
   "engines": {
-    "node": ">=20.0.0"
+    "node": ">=22.0.0"
   },
   "scripts": {
+    "dev": "pnpm -r --parallel dev",
     "dev:api": "pnpm --filter @forum/api dev",
     "dev:web": "pnpm --filter @forum/web dev",
     "dev:admin": "pnpm --filter @forum/admin dev",
+    "infra:up": "docker compose up -d",
+    "infra:down": "docker compose down",
+    "infra:logs": "docker compose logs -f --tail=200",
+    "db:generate": "pnpm --filter @forum/api prisma:generate",
+    "db:migrate": "pnpm --filter @forum/api prisma:migrate:dev",
+    "db:migrate:deploy": "pnpm --filter @forum/api prisma:migrate:deploy && pnpm --filter @forum/api prisma:post-migrate",
+    "db:seed": "pnpm --filter @forum/api db:seed",
     "build": "pnpm -r build",
     "lint": "pnpm -r lint",
     "lint:check": "pnpm -r lint:check",
     "typecheck": "pnpm -r typecheck",
     "test": "pnpm -r test",
-    "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md,yml,yaml}\" --ignore-path .gitignore",
-    "format:check": "prettier --check \"**/*.{ts,tsx,js,jsx,json,md,yml,yaml}\" --ignore-path .gitignore"
+    "check": "pnpm db:generate && pnpm format:check && pnpm lint:check && pnpm typecheck && pnpm test",
+    "ci": "pnpm check && pnpm build",
+    "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md,yml,yaml}\"",
+    "format:check": "prettier --check \"**/*.{ts,tsx,js,jsx,json,md,yml,yaml}\""
   },
   "devDependencies": {
     "prettier": "^3.4.2"

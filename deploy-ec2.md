@@ -57,8 +57,9 @@ AWS 控制台操作：
 | 自定义 TCP | 3000 | 0.0.0.0/0 | **(Nginx 配好前临时用)** |
 | 自定义 TCP | 3001 | 0.0.0.0/0 | **(Nginx 配好前临时用)** |
 | 自定义 TCP | 3002 | 0.0.0.0/0 | **(Nginx 配好前临时用)** |
+| 自定义 TCP | 3003 | 0.0.0.0/0 | **(Nginx 配好前临时用)** |
 
-> ⚠️ 3000/3001/3002 配好 Nginx 后删掉，只留 22/80/443。
+> ⚠️ 3000/3001/3002/3003 配好 Nginx 后删掉，只留 22/80/443。
 > ⚠️ PostgreSQL(5432) 和 Redis(6379) **永远不要**开放给公网。
 
 ---
@@ -200,6 +201,12 @@ rsync -avz --progress \
   --exclude '.git' \
   --exclude '*.tsbuildinfo' \
   --exclude '.pnpm-store' \
+  --exclude 'apps/api/.env' \
+  --exclude 'apps/api/.env.*' \
+  --exclude 'apps/web/.env' \
+  --exclude 'apps/web/.env.*' \
+  --exclude 'apps/admin/.env' \
+  --exclude 'apps/admin/.env.*' \
   -e "ssh -i ~/Downloads/hezhong666.pem" \
   ./ ubuntu@54.46.126.41:~/forum/
 ```
@@ -339,7 +346,7 @@ RATE_LIMIT_TRUST_PROXY=true
 ```bash
 cat > apps/web/.env << 'EOF'
 NEXT_PUBLIC_API_URL=http://localhost:3000
-NEXT_PUBLIC_ADMIN_URL=https://manage.unidating.top
+NEXT_PUBLIC_ADMIN_URL=https://admin.unidating.top
 NEXT_PUBLIC_APP_NAME=浙工商树洞
 NEXT_PUBLIC_USE_MOCK=false
 EOF
@@ -353,13 +360,13 @@ EOF
 cat > apps/admin/.env << 'EOF'
 NEXT_PUBLIC_API_URL=http://localhost:3000
 NEXT_PUBLIC_WEB_URL=https://unidating.top
-NEXT_PUBLIC_ADMIN_URL=https://manage.unidating.top
+NEXT_PUBLIC_ADMIN_URL=https://admin.unidating.top
 NEXT_PUBLIC_APP_NAME=浙工商树洞·后台
 NEXT_PUBLIC_USE_MOCK=false
 EOF
 ```
 
-> 如果管理后台登录时报 `Failed to fetch`，先确认已经用最新代码重新 build；新版前端会把浏览器端请求发到 `https://manage.unidating.top/api/...`，再由 Next.js rewrite 转发到 EC2 本机 API。
+> 如果管理后台登录时报 `Failed to fetch`，先确认已经用最新代码重新 build；新版前端会把浏览器端请求发到 `https://admin.unidating.top/api/...`，再由 Next.js rewrite 转发到 EC2 本机 API。
 
 ---
 
@@ -641,14 +648,14 @@ sudo nano /etc/nginx/sites-available/forum
 ```nginx
 server {
     listen 80;
-    server_name manage.unidating.top;
+    server_name admin.unidating.top;
 
     return 301 https://$host$request_uri;
 }
 
 server {
     listen 443 ssl;
-    server_name manage.unidating.top;
+    server_name admin.unidating.top;
 
     ssl_certificate /etc/letsencrypt/live/unidating.top/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/unidating.top/privkey.pem;
@@ -669,22 +676,53 @@ server {
 }
 ```
 
-然后在阿里云 DNS 添加 A 记录：`manage` → 你的弹性IP。DNS 生效并配置 HTTPS 后访问 `https://manage.unidating.top`。
+然后在阿里云 DNS 添加 A 记录：`admin` → 你的弹性IP。DNS 生效并配置 HTTPS 后访问 `https://admin.unidating.top`。
 
-如果 `sudo nginx -T` 里出现另一个 `server_name manage.unidating.top; return 404; # managed by Certbot`，删除或改成上面的 301 跳转；否则 HTTP 访问会被这个 Certbot 占位 server 拦截成 404。
+如果 `sudo nginx -T` 里出现另一个 `server_name admin.unidating.top; return 404; # managed by Certbot`，删除或改成上面的 301 跳转；否则 HTTP 访问会被这个 Certbot 占位 server 拦截成 404。
 
-如果 `manage.unidating.top` 打开是 404：
+如果 `admin.unidating.top` 打开是 404：
 
 ```bash
 curl -I http://127.0.0.1:3002
-sudo nginx -T | grep -A20 'server_name manage.unidating.top'
+sudo nginx -T | grep -A20 'server_name admin.unidating.top'
 sudo nginx -t
 sudo systemctl reload nginx
 ```
 
-如果 `curl -I http://127.0.0.1:3002` 不是 200/307，先看 `pm2 logs forum-admin --lines 80 --nostream`；如果本机 3002 正常但域名 404，就是 Nginx 的 `server_name manage.unidating.top` 没生效或 DNS 没指到这台 EC2。
+如果 `curl -I http://127.0.0.1:3002` 不是 200/307，先看 `pm2 logs forum-admin --lines 80 --nostream`；如果本机 3002 正常但域名 404，就是 Nginx 的 `server_name admin.unidating.top` 没生效或 DNS 没指到这台 EC2。
 
 管理员账号来自数据库中 `role=admin` 的用户；不要在生产环境使用硬编码后台账号。
+
+### 11.6 食堂商家后台访问
+
+商家使用独立的管理后台，不会进入论坛，也不会获得论坛帖子、用户或私信权限。平台管理员在美食管理页创建商家邀请后，商家通过邀请链接设置后台账号。
+
+后台进程运行在 `localhost:3003`，正式域名使用 `merchant.unidating.top`：
+
+```nginx
+server {
+    listen 80;
+    server_name merchant.unidating.top;
+
+    location / {
+        proxy_pass http://127.0.0.1:3003;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+```
+
+先确认商家后台本机可用：
+
+```bash
+curl -I http://127.0.0.1:3003
+pm2 logs forum-merchant --lines 50 --nostream
+```
 
 ---
 
@@ -698,7 +736,8 @@ sudo systemctl reload nginx
 | -------- | -------- | ---------- |
 | A        | @        | 你的弹性IP |
 | A        | www      | 你的弹性IP |
-| A        | manage   | 你的弹性IP |
+| A        | admin    | 你的弹性IP |
+| A        | merchant | 你的弹性IP |
 
 > DNS 生效需 5-15 分钟。
 
@@ -714,7 +753,7 @@ sudo nano /etc/nginx/sites-available/forum
 
 ```bash
 sudo apt install -y certbot python3-certbot-nginx
-sudo certbot --nginx -d unidating.top -d www.unidating.top -d manage.unidating.top
+sudo certbot --nginx -d unidating.top -d www.unidating.top -d admin.unidating.top -d merchant.unidating.top
 ```
 
 ---
@@ -761,6 +800,9 @@ ssh -i ~/Downloads/hezhong666.pem ubuntu@你的EC2公网IP
 cd ~/forum
 
 # 备份数据库（每次上线前做）
+set -a
+source apps/api/.env
+set +a
 pg_dump "$DATABASE_URL" > ~/forum-backup-$(date +%F-%H%M%S).sql
 
 # 确保生产构建不用 mock；如果 .env 里残留 true，会直接构建失败
@@ -773,8 +815,7 @@ export NEXT_PUBLIC_USE_MOCK=false
 
 pnpm install --frozen-lockfile
 pnpm --filter @forum/api prisma:generate
-pnpm --filter @forum/api prisma:migrate:deploy
-pnpm --filter @forum/api prisma:post-migrate
+pnpm db:migrate:deploy
 pnpm typecheck
 pnpm lint:check
 pnpm build
@@ -896,7 +937,7 @@ APP_PORT=3000
 APP_HOST=0.0.0.0
 APP_BASE_URL=https://unidating.top
 FRONTEND_ORIGIN=https://unidating.top
-ADMIN_ORIGIN=https://manage.unidating.top
+ADMIN_ORIGIN=https://admin.unidating.top
 ALLOWED_EMAIL_DOMAIN=pop.zjgsu.edu.cn
 
 DATABASE_URL=postgresql://forum:换成强随机数据库密码@localhost:5432/forum?schema=public
@@ -935,7 +976,7 @@ EOF
 ```bash
 cat > apps/web/.env << 'EOF'
 NEXT_PUBLIC_API_URL=http://127.0.0.1:3000
-NEXT_PUBLIC_ADMIN_URL=https://manage.unidating.top
+NEXT_PUBLIC_ADMIN_URL=https://admin.unidating.top
 NEXT_PUBLIC_APP_NAME=浙工商树洞
 NEXT_PUBLIC_USE_MOCK=false
 EOF
@@ -943,7 +984,7 @@ EOF
 cat > apps/admin/.env << 'EOF'
 NEXT_PUBLIC_API_URL=http://127.0.0.1:3000
 NEXT_PUBLIC_WEB_URL=https://unidating.top
-NEXT_PUBLIC_ADMIN_URL=https://manage.unidating.top
+NEXT_PUBLIC_ADMIN_URL=https://admin.unidating.top
 NEXT_PUBLIC_APP_NAME=浙工商树洞·后台
 NEXT_PUBLIC_USE_MOCK=false
 EOF
@@ -989,7 +1030,7 @@ curl -I http://127.0.0.1:3002
 sudo tee /etc/nginx/sites-available/forum > /dev/null << 'EOF'
 server {
     listen 80;
-    server_name unidating.top www.unidating.top manage.unidating.top;
+    server_name unidating.top www.unidating.top;
     return 301 https://$host$request_uri;
 }
 
@@ -1027,7 +1068,7 @@ server {
 
 server {
     listen 443 ssl;
-    server_name manage.unidating.top;
+    server_name admin.unidating.top;
 
     ssl_certificate /etc/letsencrypt/live/unidating.top/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/unidating.top/privkey.pem;
@@ -1067,7 +1108,7 @@ sudo systemctl reload nginx
 如果证书还没签发，先临时只用 80 端口反代；DNS 指向 EC2 后再执行：
 
 ```bash
-sudo certbot --nginx -d unidating.top -d www.unidating.top -d manage.unidating.top
+sudo certbot --nginx -d unidating.top -d www.unidating.top -d admin.unidating.top
 ```
 
 ### 14.8 最终验收
@@ -1076,14 +1117,14 @@ sudo certbot --nginx -d unidating.top -d www.unidating.top -d manage.unidating.t
 pm2 status
 curl http://127.0.0.1:3000/healthz
 curl -Ik https://unidating.top
-curl -Ik https://manage.unidating.top
+curl -Ik https://admin.unidating.top
 pm2 logs forum-api --lines 50 --nostream
 ```
 
 浏览器验收：
 
 - `https://unidating.top` 未登录应进入登录页。
-- `https://manage.unidating.top` 应进入后台登录页。
+- `https://admin.unidating.top` 应进入后台登录页。
 - 后台登录必须填写管理员账号密码和手机验证器里的 6 位 TOTP。
 
 ---

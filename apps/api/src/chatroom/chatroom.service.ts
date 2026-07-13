@@ -9,6 +9,7 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.module';
 import { AppConfig } from '../config/app.config';
+import { parsePublicMediaKey, publicMediaUrl } from '../upload/media-url';
 import { ModerationService } from '../common/moderation.service';
 import { createHash, createHmac, randomBytes } from 'crypto';
 import { RateLimitService } from '../common/security/rate-limit.service';
@@ -915,8 +916,7 @@ export class ChatroomService implements OnModuleInit, OnModuleDestroy {
     if (owned.length !== keys.length) {
       throw new BadRequestException('图片不存在或不属于当前用户');
     }
-    const base = this.config.get('CDN_BASE_URL').replace(/\/+$/, '');
-    return keys.map((key) => `${base}/${key}`);
+    return keys.map(publicMediaUrl);
   }
 
   private async visibleChatroomMediaKeys(
@@ -974,27 +974,7 @@ export class ChatroomService implements OnModuleInit, OnModuleDestroy {
     if (value.length > 2048) {
       throw new BadRequestException('无效的图片地址');
     }
-    try {
-      const base = new URL(`${this.config.get('CDN_BASE_URL').replace(/\/+$/, '')}/`);
-      const url = new URL(value);
-      if (
-        url.origin !== base.origin ||
-        url.username ||
-        url.password ||
-        url.search ||
-        url.hash ||
-        !url.pathname.startsWith(base.pathname)
-      ) {
-        throw new Error('untrusted URL');
-      }
-      const key = url.pathname.slice(base.pathname.length);
-      if (!key.startsWith('chatrooms/') || !/^[A-Za-z0-9/_-]+\.(?:jpg|png)$/.test(key)) {
-        throw new Error('untrusted key');
-      }
-      return key;
-    } catch {
-      throw new BadRequestException('无效的图片地址');
-    }
+    return parsePublicMediaKey(value, 'chatrooms', this.config.get('CDN_BASE_URL'));
   }
 
   // 8. Background clean up task running every 1 minute

@@ -2,7 +2,7 @@
 
 import * as React from 'react';
 import { useParams } from 'next/navigation';
-import { Card, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Separator } from '@/components/ui/separator';
 import { PostCard } from '@/components/post-card';
@@ -16,23 +16,38 @@ export default function UserProfilePage() {
   const [profile, setProfile] = React.useState<CurrentUser | null>(null);
   const [posts, setPosts] = React.useState<Post[]>([]);
   const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState('');
+  const [retryKey, setRetryKey] = React.useState(0);
 
   React.useEffect(() => {
+    let active = true;
+    setLoading(true);
+    setError('');
+
     async function load() {
-      const [user, allPosts] = await Promise.all([getCurrentUser(), listPosts({ sort: 'new' })]);
-      if (user && user.username === username) {
-        setProfile(user);
+      try {
+        const [user, allPosts] = await Promise.all([getCurrentUser(), listPosts({ sort: 'new' })]);
+        if (!active) return;
+        if (user && user.username === username) {
+          setProfile(user);
+        }
+        setPosts(
+          allPosts.items.filter((p) => {
+            if (p.author.type === 'anonymous') return false;
+            return p.author.user.username === username;
+          }),
+        );
+      } catch (requestError) {
+        if (active) setError((requestError as Error).message || '用户主页加载失败');
+      } finally {
+        if (active) setLoading(false);
       }
-      setPosts(
-        allPosts.items.filter((p) => {
-          if (p.author.type === 'anonymous') return false;
-          return p.author.user.username === username;
-        }),
-      );
-      setLoading(false);
     }
-    load();
-  }, [username]);
+    void load();
+    return () => {
+      active = false;
+    };
+  }, [retryKey, username]);
 
   if (loading) {
     return (
@@ -40,6 +55,26 @@ export default function UserProfilePage() {
         <Skeleton className="h-32 w-full rounded-lg" />
         <Skeleton className="h-64 w-full rounded-lg" />
       </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>用户主页暂时无法加载</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3 text-sm text-muted-foreground">
+          <p>{error}</p>
+          <button
+            type="button"
+            onClick={() => setRetryKey((key) => key + 1)}
+            className="rounded-lg bg-primary px-4 py-2 font-medium text-primary-foreground hover:bg-primary/90"
+          >
+            重新加载
+          </button>
+        </CardContent>
+      </Card>
     );
   }
 

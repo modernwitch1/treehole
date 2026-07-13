@@ -6,17 +6,18 @@
   "license": "UNLICENSED",
   "type": "module",
   "engines": {
-    "node": ">=20.0.0"
+    "node": ">=22.0.0"
   },
   "scripts": {
     "dev": "next dev --turbo -p 3002",
     "build": "next build",
     "start": "next start -p 3002",
-    "lint": "next lint --fix",
-    "lint:check": "next lint",
+    "lint": "eslint . --fix",
+    "lint:check": "eslint . --max-warnings=0",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@forum/api-client": "workspace:*",
     "@radix-ui/react-alert-dialog": "^1.1.3",
     "@radix-ui/react-avatar": "^1.1.2",
     "@radix-ui/react-dialog": "^1.1.3",

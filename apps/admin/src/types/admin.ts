@@ -13,7 +13,10 @@ export type ReportTargetType =
   | 'user'
   | 'conversation'
   | 'direct_message'
-  | 'chatroom_message';
+  | 'chatroom_message'
+  | 'food_post'
+  | 'food_review'
+  | 'food_reply';
 
 export interface AdminUser {
   id: string;
@@ -40,6 +43,8 @@ export interface AdminReportTargetSnapshot {
   /** 是否匿名发布；真实身份仅超级管理员可调阅，且每次读取自动审计 */
   isAnonymous?: boolean;
   boardSlug?: string;
+  merchantName?: string;
+  windowName?: string;
   createdAt?: string;
   /** 举报发生时已经固化证据，后续删除原内容不会影响调查 */
   evidencePreserved?: boolean;
@@ -360,4 +365,136 @@ export interface BoardApplication {
     username: string;
   } | null;
   appliedAt: string | null;
+}
+
+// ============================================================
+// Food module
+// ============================================================
+
+export interface AdminFoodWindow {
+  id: string;
+  floor: number;
+  name: string;
+  windowNumber: string | null;
+  locationDescription: string | null;
+  isActive?: boolean;
+  canteen: { id: string; slug: string; name: string };
+}
+
+export interface AdminFoodCanteen {
+  id: string;
+  slug: string;
+  name: string;
+  description: string | null;
+  isActive: boolean;
+  windows: AdminFoodWindow[];
+}
+
+export interface AdminFoodMerchant {
+  id: string;
+  slug: string;
+  name: string;
+  description: string | null;
+  logoUrl: string | null;
+  contactDisplay: string | null;
+  status: 'pending' | 'active' | 'suspended' | 'closed';
+  windows: AdminFoodWindow[];
+  staffCount: number;
+  postCount: number;
+}
+
+export interface AdminFoodPost {
+  id: string;
+  type: 'new_product' | 'promotion' | 'advertisement' | 'notice';
+  title: string;
+  contentMd: string;
+  status: ContentStatus;
+  merchant: { id: string; slug: string; name: string; logoUrl: string | null };
+  window: AdminFoodWindow | null;
+  authorId?: string;
+  authorUsername?: string;
+  authorType?: 'user' | 'merchant';
+  createdAt: string;
+}
+
+export interface AdminFoodReview {
+  id: string;
+  type: 'taste_review' | 'suggestion';
+  tasteScore: number | null;
+  contentMd: string;
+  status: ContentStatus;
+  isAnonymous: boolean;
+  window: {
+    id: string;
+    name: string;
+    floor: number;
+    canteen: { id: string; slug: string; name: string };
+    merchant: { id: string; slug: string; name: string; logoUrl: string | null };
+  };
+  authorId: string;
+  authorUsername: string;
+  createdAt: string;
+}
+
+export interface AdminFoodReply {
+  id: string;
+  contentMd: string;
+  status: ContentStatus;
+  authorUsername: string;
+  merchant: { id: string; slug: string; name: string; logoUrl: string | null };
+  window: {
+    id: string;
+    name: string;
+    floor: number;
+    canteen: { id: string; slug: string; name: string };
+  };
+  createdAt: string;
+}
+
+export interface AdminFoodProduct {
+  id: string;
+  merchantId: string;
+  name: string;
+  category: string | null;
+  description: string | null;
+  priceCents: number | null;
+  imageUrl: string | null;
+  status: 'draft' | 'pending_review' | 'published' | 'hidden' | 'deleted';
+  isAvailable: boolean;
+  merchant: { id: string; slug: string; name: string; logoUrl: string | null };
+  window: { id: string; name: string; canteen: { id: string; slug: string; name: string } } | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AdminFoodStaff {
+  id: string;
+  role: 'owner' | 'editor' | 'viewer';
+  status: 'active' | 'revoked';
+  joinedAt: string;
+  revokedAt: string | null;
+  account: { id: string; displayName: string; email: string; status: string };
+  merchant: { id: string; slug: string; name: string };
+}
+
+export interface AdminFoodInvitation {
+  id: string;
+  email: string;
+  role: 'owner' | 'editor' | 'viewer';
+  status: 'pending' | 'accepted' | 'expired' | 'revoked';
+  expiresAt: string;
+  acceptedAt: string | null;
+  revokedAt: string | null;
+  createdAt: string;
+  merchant: { id: string; slug: string; name: string };
+  sender: { id: string; username: string };
+  acceptedAccount: { id: string; displayName: string; email: string } | null;
+}
+
+export interface AdminFoodStats {
+  merchants: { pending?: number; active?: number; suspended?: number; closed?: number };
+  activeCanteens: number;
+  activeStaff: number;
+  pendingInvitations: number;
+  moderation: { products: number; posts: number; reviews: number; replies: number; total: number };
 }

@@ -4,13 +4,14 @@ import * as React from 'react';
 import { ArrowBigDown, ArrowBigUp } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { formatScore } from '@/lib/format';
+import { toast } from 'sonner';
 
 interface VoteButtonsProps {
   score: number;
   myVote?: 1 | -1 | 0;
   size?: 'sm' | 'md';
   orientation?: 'horizontal' | 'vertical';
-  onVote?: (value: 1 | -1 | 0) => void;
+  onVote?: (value: 1 | -1 | 0) => void | Promise<void>;
   className?: string;
 }
 
@@ -29,15 +30,28 @@ export function VoteButtons({
 }: VoteButtonsProps) {
   const [vote, setVote] = React.useState<1 | -1 | 0>(initialVote ?? 0);
   const [score, setScore] = React.useState(initialScore);
+  const [pending, setPending] = React.useState(false);
 
-  function handleClick(value: 1 | -1, e: React.MouseEvent) {
+  async function handleClick(value: 1 | -1, e: React.MouseEvent) {
+    if (pending) return;
     e.preventDefault();
     e.stopPropagation();
+    const previousVote = vote;
+    const previousScore = score;
     const next: 1 | -1 | 0 = vote === value ? 0 : value;
     const delta = next - vote;
     setVote(next);
     setScore((s) => s + delta);
-    onVote?.(next);
+    setPending(true);
+    try {
+      await onVote?.(next);
+    } catch (error) {
+      setVote(previousVote);
+      setScore(previousScore);
+      toast.error((error as Error).message || '投票失败，请稍后重试');
+    } finally {
+      setPending(false);
+    }
   }
 
   const isUp = vote === 1;
@@ -54,6 +68,7 @@ export function VoteButtons({
         <button
           type="button"
           onClick={(e) => handleClick(1, e)}
+          disabled={pending}
           aria-label="赞"
           aria-pressed={isUp}
           className={cn(
@@ -82,6 +97,7 @@ export function VoteButtons({
         <button
           type="button"
           onClick={(e) => handleClick(-1, e)}
+          disabled={pending}
           aria-label="踩"
           aria-pressed={isDown}
           className={cn(
@@ -117,6 +133,7 @@ export function VoteButtons({
       <button
         type="button"
         onClick={(e) => handleClick(1, e)}
+        disabled={pending}
         aria-label="赞"
         aria-pressed={isUp}
         className={cn(
@@ -145,6 +162,7 @@ export function VoteButtons({
       <button
         type="button"
         onClick={(e) => handleClick(-1, e)}
+        disabled={pending}
         aria-label="踩"
         aria-pressed={isDown}
         className={cn(

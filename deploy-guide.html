@@ -741,7 +741,7 @@ nano apps/admin/.env.local</pre
       >
       <pre>NEXT_PUBLIC_API_URL=http://localhost:3000
 NEXT_PUBLIC_WEB_URL=https://unidating.top
-NEXT_PUBLIC_ADMIN_URL=https://manage.unidating.top
+NEXT_PUBLIC_ADMIN_URL=https://admin.unidating.top
 NEXT_PUBLIC_APP_NAME=浙工商树洞·后台
 NEXT_PUBLIC_USE_MOCK=<span class="hl">true</span></pre>
 
@@ -801,7 +801,7 @@ sudo systemctl enable nginx</pre
 
       <p>
         把下面配置中的域名改成你自己的（<code>unidating.top</code>,
-        <code>manage.unidating.top</code>）。<strong>管理后台用一个不易猜到的子域名</strong>：
+        <code>admin.unidating.top</code>）。<strong>管理后台用一个不易猜到的子域名</strong>：
       </p>
       <pre><span class="cm"># ===== 论坛前端 =====</span>
 server {
@@ -827,7 +827,7 @@ server {
 <span class="cm"># ===== 管理后台（隐藏入口，用不易猜到的子域名）=====</span>
 server {
     listen 80;
-    server_name <span class="hl">manage.unidating.top</span>;
+    server_name <span class="hl">admin.unidating.top</span>;
 
     location / {
         proxy_pass http://127.0.0.1:3002;
@@ -896,10 +896,10 @@ sudo systemctl reload nginx                       <span class="cm"># 应用</spa
         </tr>
         <tr>
           <td><strong>A</strong></td>
-          <td><strong>manage</strong></td>
+          <td><strong>admin</strong></td>
           <td><span class="hl">你的 AWS 弹性 IP</span></td>
           <td>600</td>
-          <td>manage.unidating.top 指向管理后台（隐藏入口）</td>
+          <td>admin.unidating.top 指向管理后台（隐藏入口）</td>
         </tr>
         <tr>
           <td><strong>A</strong></td>
@@ -913,7 +913,7 @@ sudo systemctl reload nginx                       <span class="cm"># 应用</spa
       <div class="callout tip">
         <strong>📝 字段解释（新手必看）</strong><br />
         <strong>主机记录 @</strong> = 代表域名本身（unidating.top）<br />
-        <strong>主机记录 manage</strong> = 代表子域名 manage.unidating.top<br />
+        <strong>主机记录 admin</strong> = 代表子域名 admin.unidating.top<br />
         <strong>记录值</strong> = 你的 AWS EC2 弹性 IP 地址<br />
         <strong>TTL 600</strong> = DNS 缓存 10 分钟，生效快
       </div>
@@ -937,7 +937,7 @@ ping unidating.top
       <h3>第 4 步：更新 Nginx 配置使用你的域名</h3>
       <p>
         回到第 11 节的 Nginx 配置，把所有 <code>forum.yourdomain.com</code> 替换为
-        <code>unidating.top</code>，管理后台用 <code>manage.unidating.top</code>：
+        <code>unidating.top</code>，管理后台用 <code>admin.unidating.top</code>：
       </p>
       <pre>sudo nano /etc/nginx/sites-available/forum</pre>
 
@@ -955,7 +955,7 @@ server {
 <span class="cm"># 管理后台</span>
 server {
     listen 80;
-    server_name <span class="hl">manage.unidating.top</span>;
+    server_name <span class="hl">admin.unidating.top</span>;
     location / {
         proxy_pass http://127.0.0.1:3002;
         ...
@@ -974,7 +974,7 @@ sudo nginx -t && sudo systemctl reload nginx</pre>
 
       <h3>12.2 获取证书</h3>
       <p>确保 DNS 已生效（<code>nslookup unidating.top</code> 返回你的 AWS IP），然后：</p>
-      <pre>sudo certbot --nginx -d unidating.top -d www.unidating.top -d manage.unidating.top</pre>
+      <pre>sudo certbot --nginx -d unidating.top -d www.unidating.top -d admin.unidating.top</pre>
 
       <p>
         Certbot 会：自动验证域名 → 签发 Let's Encrypt 证书 → 修改 Nginx 配置为 HTTPS → 设置自动续期
@@ -1234,7 +1234,7 @@ curl http://localhost:3000/api/v1/admin/registrations</pre>
       <h3>15.4 管理后台检查</h3>
       <ol>
         <li>
-          打开 <code>https://manage.unidating.top</code> → 看到管理员登录页 → 输入账号密码登录 →
+          打开 <code>https://admin.unidating.top</code> → 看到管理员登录页 → 输入账号密码登录 →
           看到仪表盘
         </li>
         <li>侧栏「注册审批」→ 看到待审批列表（3 条 mock 数据）</li>

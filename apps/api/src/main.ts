@@ -15,6 +15,7 @@ import {
   USER_ACCESS_COOKIE,
   USER_REFRESH_COOKIE,
 } from './auth/session.constants';
+import { MERCHANT_ACCESS_COOKIE, MERCHANT_REFRESH_COOKIE } from './merchant-auth/session.constants';
 import { RateLimitService } from './common/security/rate-limit.service';
 
 async function bootstrap(): Promise<void> {
@@ -45,7 +46,11 @@ async function bootstrap(): Promise<void> {
   app.use(compression());
   app.use(cookieParser());
 
-  const corsOrigins = [config.get('FRONTEND_ORIGIN'), config.get('ADMIN_ORIGIN')]
+  const corsOrigins = [
+    config.get('FRONTEND_ORIGIN'),
+    config.get('ADMIN_ORIGIN'),
+    config.get('MERCHANT_ORIGIN'),
+  ]
     .filter((origin): origin is string => Boolean(origin))
     .map((origin) => new URL(origin).origin);
 
@@ -70,7 +75,9 @@ async function bootstrap(): Promise<void> {
       req.cookies?.[USER_ACCESS_COOKIE] ||
       req.cookies?.[USER_REFRESH_COOKIE] ||
       req.cookies?.[APPEAL_ACCESS_COOKIE] ||
-      req.cookies?.[ADMIN_ACCESS_COOKIE],
+      req.cookies?.[ADMIN_ACCESS_COOKIE] ||
+      req.cookies?.[MERCHANT_ACCESS_COOKIE] ||
+      req.cookies?.[MERCHANT_REFRESH_COOKIE],
     );
     if ((!origin && !usesAuthCookie) || (origin && corsOrigins.includes(origin))) {
       next();

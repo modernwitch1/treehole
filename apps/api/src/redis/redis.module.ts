@@ -1,4 +1,12 @@
-import { Global, Inject, Injectable, Logger, Module, OnModuleDestroy } from '@nestjs/common';
+import {
+  Global,
+  Inject,
+  Injectable,
+  Logger,
+  Module,
+  OnModuleDestroy,
+  OnModuleInit,
+} from '@nestjs/common';
 import Redis from 'ioredis';
 import { AppConfig } from '../config/app.config';
 import { AppConfigModule } from '../config/config.module';
@@ -6,7 +14,7 @@ import { AppConfigModule } from '../config/config.module';
 export const REDIS_CLIENT = Symbol('REDIS_CLIENT');
 
 @Injectable()
-export class RedisService implements OnModuleDestroy {
+export class RedisService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(RedisService.name);
 
   constructor(@Inject(REDIS_CLIENT) public readonly client: Redis) {}
@@ -15,8 +23,17 @@ export class RedisService implements OnModuleDestroy {
     return this.client.ping();
   }
 
+  async onModuleInit(): Promise<void> {
+    await this.client.connect();
+    this.logger.log('Redis ready');
+  }
+
   async onModuleDestroy(): Promise<void> {
-    await this.client.quit();
+    if (this.client.status === 'ready') {
+      await this.client.quit();
+    } else {
+      this.client.disconnect();
+    }
     this.logger.log('Redis disconnected');
   }
 }
@@ -31,7 +48,7 @@ export class RedisService implements OnModuleDestroy {
       useFactory: (config: AppConfig): Redis => {
         const client = new Redis(config.get('REDIS_URL'), {
           maxRetriesPerRequest: 3,
-          lazyConnect: false,
+          lazyConnect: true,
           enableReadyCheck: true,
         });
         const logger = new Logger('RedisClient');

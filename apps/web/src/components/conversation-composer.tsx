@@ -1,6 +1,7 @@
 'use client';
 
 import * as React from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Send, Loader2, Lock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -35,9 +36,7 @@ export function ConversationComposer({ detail, onSent }: ConversationComposerPro
     );
     return (
       <div className="rounded-lg border border-dashed bg-muted/40 p-4 text-center text-sm">
-        <p className="font-medium">
-          {initialMessagePending ? '消息正在审核' : '等待对方回复'}
-        </p>
+        <p className="font-medium">{initialMessagePending ? '消息正在审核' : '等待对方回复'}</p>
         <p className="mt-1 text-xs text-muted-foreground">
           {initialMessagePending
             ? '审核通过前消息仅你自己可见，不会投递给对方。'
@@ -133,7 +132,16 @@ export function ConversationComposer({ detail, onSent }: ConversationComposerPro
           onChange={(event) => setRulesAcknowledged(event.target.checked)}
           className="mt-0.5"
         />
-        <span>我确认本条私信遵守社区规则；违规私信可能被拦截、处罚并依法依规溯源。</span>
+        <span>
+          我确认本条私信遵守
+          <Link
+            href="/rules"
+            className="mx-1 font-medium text-foreground underline underline-offset-4"
+          >
+            社区规则
+          </Link>
+          ；违规私信可能被拦截、处罚并依法依规溯源。
+        </span>
       </label>
       <p className="px-1 text-[11px] text-muted-foreground">⌘/Ctrl + Enter 快速发送</p>
     </form>

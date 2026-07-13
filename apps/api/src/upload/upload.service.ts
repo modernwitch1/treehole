@@ -10,6 +10,7 @@ import { extname } from 'path';
 import sharp from 'sharp';
 import { AppConfig } from '../config/app.config';
 import { PrismaService } from '../prisma/prisma.module';
+import { publicMediaUrl, registrationUploadReference } from './media-url';
 
 @Injectable()
 export class UploadService {
@@ -32,8 +33,21 @@ export class UploadService {
     return this.uploadPublicFile(file, 'chatrooms', userId);
   }
 
+  async uploadFoodImage(file: Express.Multer.File, userId: bigint) {
+    return this.uploadPublicFile(file, 'food', userId);
+  }
+
+  async uploadMerchantFoodImage(
+    file: Express.Multer.File,
+    staffAccountId: bigint,
+    _ip?: string,
+    _userAgent?: string,
+  ) {
+    return this.uploadPublicFile(file, 'food', undefined, staffAccountId);
+  }
+
   async getPublicFile(folder: string, filename: string) {
-    if (!['posts', 'chatrooms'].includes(folder)) {
+    if (!['posts', 'chatrooms', 'food'].includes(folder)) {
       throw new NotFoundException('图片不存在');
     }
     if (!/^[A-Za-z0-9_-]+\.(?:jpg|png)$/.test(filename)) {
@@ -103,8 +117,9 @@ export class UploadService {
 
   private async uploadPublicFile(
     file: Express.Multer.File,
-    folder: 'posts' | 'registrations' | 'chatrooms',
+    folder: 'posts' | 'registrations' | 'chatrooms' | 'food',
     userId?: bigint,
+    staffAccountId?: bigint,
   ) {
     if (!file?.buffer?.length) {
       throw new BadRequestException('请选择要上传的图片');
@@ -125,6 +140,19 @@ export class UploadService {
         throw new ForbiddenException('当前账号不能上传图片');
       }
     }
+    if (staffAccountId) {
+      const account = await this.prisma.foodStaffAccount.findFirst({
+        where: {
+          id: staffAccountId,
+          status: 'active',
+          memberships: { some: { status: 'active', merchant: { status: 'active' } } },
+        },
+        select: { id: true },
+      });
+      if (!account) {
+        throw new ForbiddenException('当前商家账号不能上传图片');
+      }
+    }
 
     const processed = await this.reencodeImage(file.buffer);
     const key = `${folder}/${Date.now()}-${randomUUID()}${processed.ext}`;
@@ -140,13 +168,14 @@ export class UploadService {
       }),
     );
 
-    if (userId) {
+    if (userId || staffAccountId) {
       // Uploads are available immediately unless image moderation is explicitly
       // enabled. Production mode alone must not create a manual image-review queue.
       const moderationStatus = this.config.get('IMAGE_MODERATION_ENABLED') ? 'pending' : 'passed';
       const upload = await this.prisma.upload.create({
         data: {
           userId,
+          staffAccountId,
           s3Key: key,
           mimeType: processed.mimeType,
           sizeBytes: processed.buffer.length,
@@ -157,13 +186,15 @@ export class UploadService {
         },
       });
       return {
-        url: `${this.config.get('CDN_BASE_URL').replace(/\/+$/, '')}/${key}`,
+        // Never disclose a storage URL.  The API route checks moderation state
+        // before reading a private object from S3/MinIO.
+        url: publicMediaUrl(key),
         moderationStatus: upload.moderationStatus,
       };
     }
 
     return {
-      url: `${this.config.get('CDN_BASE_URL').replace(/\/+$/, '')}/${key}`,
+      url: registrationUploadReference(key),
       moderationStatus: 'pending' as const,
     };
   }

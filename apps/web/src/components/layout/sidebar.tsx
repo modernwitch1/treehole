@@ -13,6 +13,7 @@ import {
   Settings,
   Info,
   MessagesSquare,
+  Utensils,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
@@ -23,9 +24,9 @@ export function Sidebar() {
   const pathname = usePathname();
 
   return (
-    <aside className="sticky top-16 hidden h-[calc(100vh-4rem)] w-60 shrink-0 border-r border-border/70 bg-background/60 backdrop-blur-sm lg:flex lg:flex-col">
-      <div className="p-4 pb-1">
-        <Button asChild className="w-full justify-center rounded-xl shadow-sm">
+    <aside className="sticky top-[4.25rem] hidden h-[calc(100vh-4.25rem)] w-60 shrink-0 border-r border-border/60 bg-transparent lg:flex lg:flex-col [&_svg]:stroke-[1.8]">
+      <div className="p-4 pb-2">
+        <Button asChild className="w-full justify-center rounded-lg shadow-sm">
           <Link href="/submit">
             <Plus className="size-4" />
             发布帖子
@@ -71,6 +72,13 @@ export function Sidebar() {
           >
             在线聊天房
           </NavItem>
+          <NavItem
+            href="/food"
+            icon={<Utensils className="size-4" />}
+            active={pathname.startsWith('/food')}
+          >
+            美食模块
+          </NavItem>
 
           <Separator className="my-2" />
 
@@ -89,13 +97,6 @@ export function Sidebar() {
           >
             设置
           </NavItem>
-
-          <Separator className="my-2" />
-
-          <SectionLabel>内容分类</SectionLabel>
-          <p className="px-3 py-1 text-xs leading-5 text-muted-foreground">
-            帖子按主题频道归类。频道由管理员统一维护，避免自由标签重复、拼写分裂和滥用。
-          </p>
         </nav>
       </ScrollArea>
 
@@ -130,9 +131,9 @@ function NavItem({
       href={href}
       aria-current={active ? 'page' : undefined}
       className={cn(
-        'relative flex min-h-10 items-center gap-3 rounded-xl px-3 text-sm font-medium transition-colors',
+        'relative flex min-h-10 items-center gap-3 rounded-lg px-3 text-sm font-medium transition-colors [&_svg]:stroke-[1.8]',
         active
-          ? 'bg-primary/10 text-primary shadow-sm ring-1 ring-primary/10 before:absolute before:left-0 before:h-5 before:w-0.5 before:rounded-full before:bg-primary'
+          ? 'bg-accent/75 text-primary before:absolute before:left-0 before:h-5 before:w-0.5 before:rounded-full before:bg-primary'
           : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground',
       )}
     >
@@ -144,7 +145,7 @@ function NavItem({
 
 function FooterLinks() {
   return (
-    <div className="space-y-2.5 bg-muted/20 p-4 text-xs text-muted-foreground">
+    <div className="space-y-2.5 border-t border-border/60 p-4 text-xs text-muted-foreground">
       <div className="flex flex-wrap gap-x-3 gap-y-1">
         <Link href="/about" className="inline-flex items-center gap-1 hover:text-foreground">
           <Info className="size-3" /> 关于
@@ -166,8 +167,7 @@ function FooterLinks() {
         <span className="inline-flex items-center gap-1 text-foreground/70">
           <MessagesSquare className="size-3 text-primary" /> 浙工商树洞
         </span>
-        <br />
-        © 2026 · 仅面向 @pop.zjgsu.edu.cn 学生
+        <br />© 2026 · 仅面向 @pop.zjgsu.edu.cn 学生
       </p>
     </div>
   );

@@ -15,12 +15,12 @@ sudo apt update && sudo apt upgrade -y
 # 安装基础工具
 sudo apt install -y git nginx curl gnupg lsb-release ca-certificates
 
-# 安装 Node.js 20.x (Ubuntu 24.04 官方源自带 20.x)
-curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+# 安装与 .nvmrc、CI 一致的 Node.js 22.x
+curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
 sudo apt install -y nodejs
 
 # 验证
-node -v          # >= 20
+node -v          # >= 22
 npm -v
 
 # 安装 pnpm
@@ -92,7 +92,8 @@ APP_PORT=3000
 APP_HOST=0.0.0.0
 APP_BASE_URL=https://unidating.top
 FRONTEND_ORIGIN=https://unidating.top
-ADMIN_ORIGIN=https://manage.unidating.top
+ADMIN_ORIGIN=https://admin.unidating.top
+MERCHANT_ORIGIN=https://merchant.unidating.top
 ALLOWED_EMAIL_DOMAIN=pop.zjgsu.edu.cn
 
 DATABASE_URL=postgresql://forum:forum_prod_password_change_me@localhost:5432/forum?schema=public
@@ -131,7 +132,7 @@ APIEVEOF
 # Web 前端 .env
 cat > apps/web/.env << 'WEBEVEOF'
 NEXT_PUBLIC_API_URL=http://localhost:3000
-NEXT_PUBLIC_ADMIN_URL=https://manage.unidating.top
+NEXT_PUBLIC_ADMIN_URL=https://admin.unidating.top
 NEXT_PUBLIC_APP_NAME=浙工商树洞
 NEXT_PUBLIC_USE_MOCK=false
 WEBEVEOF
@@ -140,10 +141,17 @@ WEBEVEOF
 cat > apps/admin/.env << 'ADMINEVEOF'
 NEXT_PUBLIC_API_URL=http://localhost:3000
 NEXT_PUBLIC_WEB_URL=https://unidating.top
-NEXT_PUBLIC_ADMIN_URL=https://manage.unidating.top
+NEXT_PUBLIC_ADMIN_URL=https://admin.unidating.top
 NEXT_PUBLIC_USE_MOCK=false
 NEXT_PUBLIC_APP_NAME=浙工商树洞·后台
 ADMINEVEOF
+
+# 商家独立后台 .env
+cat > apps/merchant/.env << 'MERCHANTEVEOF'
+NEXT_PUBLIC_API_URL=http://localhost:3000
+NEXT_PUBLIC_USE_MOCK=false
+NEXT_PUBLIC_APP_NAME=浙工商树洞·商家后台
+MERCHANTEVEOF
 
 echo "✅ 环境变量文件已生成"
 echo "⚠️  重要: 现在编辑 apps/api/.env 替换所有 replace_me 和占位值！"
@@ -165,8 +173,8 @@ pnpm --filter @forum/api prisma:generate
 # 构建所有包
 pnpm build
 
-# 运行数据库迁移
-pnpm --filter @forum/api prisma:migrate:deploy
+# 运行数据库迁移和 Prisma 无法表达的幂等 PostgreSQL 约束/索引
+pnpm db:migrate:deploy
 
 # 可选：填充种子数据
 # pnpm --filter @forum/api db:seed
@@ -179,10 +187,16 @@ echo "✅ 构建完成，数据库迁移已执行"
 
 cd /home/ubuntu/zjgsu-treehole
 
-# 启动三个进程
-pm2 start dist/main.js --name "forum-api" --cwd /home/ubuntu/zjgsu-treehole/apps/api
-pm2 start node_modules/.bin/next --name "forum-web" -- start apps/web -p 3001
-pm2 start node_modules/.bin/next --name "forum-admin" -- start apps/admin -p 3002
+# 使用仓库内统一的 PM2 配置，避免部署文档和脚本的启动参数漂移。
+mkdir -p logs
+pm2 startOrReload ecosystem.config.cjs --env production
+
+# 构建会替换 .next/dist 产物；必须显式重启正在运行的 Next.js 进程，
+# 让内存中的 build manifest 与磁盘上的静态 chunk 保持同一版本。
+pm2 restart forum-api --update-env
+pm2 restart forum-web --update-env
+pm2 restart forum-admin --update-env
+pm2 restart forum-merchant --update-env
 
 # 保存 PM2 进程列表
 pm2 save
@@ -227,23 +241,39 @@ server {
 
 server {
     listen 80;
-    server_name manage.unidating.top;
+    server_name admin.unidating.top;
 
-    return 301 https://$host$request_uri;
+    # 只限制登录接口，不限制管理后台静态资源和普通 API 请求。
+    location = /api/v1/admin/auth/login {
+        limit_req zone=admin_login burst=20 nodelay;
+        proxy_pass http://127.0.0.1:3000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    location / {
+        proxy_pass http://127.0.0.1:3002;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_cache_bypass $http_upgrade;
+        client_max_body_size 20m;
+    }
 }
 
 server {
-    listen 443 ssl;
-    server_name manage.unidating.top;
+    listen 80;
+    server_name merchant.unidating.top;
 
-    ssl_certificate /etc/letsencrypt/live/unidating.top/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/unidating.top/privkey.pem;
-    include /etc/letsencrypt/options-ssl-nginx.conf;
-    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
-
+    # 商家后台独立端口；DNS 和 HTTPS 证书配置完成后再改为 HTTPS 跳转。
     location / {
-        limit_req zone=admin_login burst=20 nodelay;
-        proxy_pass http://127.0.0.1:3002;
+        proxy_pass http://127.0.0.1:3003;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection 'upgrade';
@@ -261,7 +291,8 @@ sudo mv /tmp/forum.conf /etc/nginx/sites-available/forum
 sudo ln -sf /etc/nginx/sites-available/forum /etc/nginx/sites-enabled/
 sudo rm -f /etc/nginx/sites-enabled/default
 
-# 测试配置
+# 首次安装只写 HTTP 配置，确保在证书尚不存在时 nginx -t 也能通过。
+# 后续 certbot --nginx 会自动补充 HTTPS 证书和重定向。
 sudo nginx -t
 
 # 启动 Nginx
@@ -277,7 +308,7 @@ echo "3. 配置 SES 邮箱 (或先用 SMTP 调试)"
 echo "4. 域名 DNS 指向 EC2 公网 IP"
 echo "5. 配置 SSL:"
 echo "   sudo apt install -y certbot python3-certbot-nginx"
-echo "   sudo certbot --nginx -d unidating.top -d www.unidating.top -d manage.unidating.top"
+echo "   sudo certbot --nginx -d unidating.top -d www.unidating.top -d admin.unidating.top -d merchant.unidating.top"
 echo "6. AWS 安全组放开 80, 443 端口"
 echo "7. EC2 安全组 -> 只保留 22, 80, 443"
 echo "===================================="

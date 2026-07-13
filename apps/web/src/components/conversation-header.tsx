@@ -25,9 +25,13 @@ export function ConversationHeader({ conversation: c }: ConversationHeaderProps)
 
   async function onBlock() {
     if (!confirm(`拉黑 ${c.partner.displayName}? 该会话将不能再发消息。`)) return;
-    await blockConversation(c.id);
-    toast.success('已拉黑对方');
-    router.refresh();
+    try {
+      await blockConversation(c.id);
+      toast.success('已拉黑对方');
+      router.refresh();
+    } catch (error) {
+      toast.error((error as Error).message || '拉黑失败，请稍后重试');
+    }
   }
 
   return (
@@ -54,7 +58,9 @@ export function ConversationHeader({ conversation: c }: ConversationHeaderProps)
             className="mt-0.5 inline-flex items-center gap-1 truncate text-xs text-muted-foreground hover:underline"
           >
             <Hash className="size-3 shrink-0" />
-            <span className="truncate">来源帖子: {c.origin.postTitle} · {c.origin.tag}</span>
+            <span className="truncate">
+              来源帖子: {c.origin.postTitle} · {c.origin.tag}
+            </span>
           </Link>
         )}
       </div>

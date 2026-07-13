@@ -6,6 +6,8 @@ if (process.env.NODE_ENV === 'production' && process.env.NEXT_PUBLIC_USE_MOCK ==
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
+  // CI executes the stricter ESLint CLI gate separately; avoid duplicate build-time linting.
+  eslint: { ignoreDuringBuilds: true },
   // 后端 API 在 :3000, 前端在 :3001。通过 rewrites 把 /api/* 代理过去, 避开浏览器 CORS / cookie 路径痛点
   async rewrites() {
     return [

@@ -6,6 +6,7 @@
  */
 
 import { MOCK_ADMIN_USER, MOCK_STATS } from '@/data/mock';
+import { ApiError, requestJson } from '@forum/api-client';
 import {
   loadUsers,
   saveUsers,
@@ -49,6 +50,16 @@ import type {
   SensitiveWordCategory,
   SystemAnnouncement,
   UserStatus,
+  AdminFoodMerchant,
+  AdminFoodPost,
+  AdminFoodReview,
+  AdminFoodReply,
+  AdminFoodProduct,
+  AdminFoodCanteen,
+  AdminFoodInvitation,
+  AdminFoodStaff,
+  AdminFoodStats,
+  AdminFoodWindow,
 } from '@/types/admin';
 
 const USE_MOCK = process.env.NEXT_PUBLIC_USE_MOCK === 'true';
@@ -66,21 +77,10 @@ function apiBase(): string {
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-    ...((init?.headers as Record<string, string>) ?? {}),
-  };
-  const res = await fetch(`${apiBase()}/api/v1${path}`, {
-    credentials: 'include',
-    headers,
+  const result = await requestJson<T>(`${apiBase()}/api/v1${path}`, {
     ...init,
+    headers: new Headers(init?.headers),
   });
-  if (!res.ok) {
-    const body = (await res.json().catch(() => ({}))) as { message?: string };
-    throw new Error(body.message ?? res.statusText);
-  }
-  const text = await res.text();
-  const result = (text ? JSON.parse(text) : {}) as T;
   const method = (init?.method ?? 'GET').toUpperCase();
   if (typeof window !== 'undefined' && !['GET', 'HEAD', 'OPTIONS'].includes(method)) {
     window.dispatchEvent(new Event('admin:stats-changed'));
@@ -172,8 +172,11 @@ export async function getCurrentAdmin(): Promise<AdminCurrentUser | null> {
   if (USE_MOCK) return Promise.resolve(MOCK_ADMIN_USER);
   try {
     return await request('/admin/me');
-  } catch {
-    return null;
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 401) {
+      return null;
+    }
+    throw error;
   }
 }
 
@@ -253,11 +256,7 @@ export async function listUsers(
   return request(`/admin/users?${params.toString()}`);
 }
 
-export async function suspendUser(
-  id: string,
-  reason: string,
-  days = 7,
-): Promise<{ ok: true }> {
+export async function suspendUser(id: string, reason: string, days = 7): Promise<{ ok: true }> {
   if (USE_MOCK) {
     await new Promise((r) => setTimeout(r, 200));
     const users = loadUsers();
@@ -1005,7 +1004,9 @@ export async function reviewAppeal(
 // Audit logs
 // ============================================================
 
-export async function listAuditLogs(opts: { page?: number; pageSize?: number; actorId?: string } = {}): Promise<{
+export async function listAuditLogs(
+  opts: { page?: number; pageSize?: number; actorId?: string } = {},
+): Promise<{
   items: AdminAuditLog[];
   actors: AdminAuditLog['actor'][];
   total: number;
@@ -1020,9 +1021,7 @@ export async function listAuditLogs(opts: { page?: number; pageSize?: number; ac
     const start = (page - 1) * pageSize;
     const filteredLogs = opts.actorId ? logs.filter((log) => log.actor.id === opts.actorId) : logs;
     const items = filteredLogs.slice(start, start + pageSize);
-    const actors = Array.from(
-      new Map(logs.map((log) => [log.actor.id, log.actor])).values(),
-    );
+    const actors = Array.from(new Map(logs.map((log) => [log.actor.id, log.actor])).values());
     return Promise.resolve({
       items,
       actors,
@@ -1429,5 +1428,335 @@ export async function rejectBoardApplication(
   return request(`/boards/${id}/reject`, {
     method: 'POST',
     body: JSON.stringify({ reason }),
+  });
+}
+
+// ============================================================
+// Food module
+// ============================================================
+
+export async function listFoodCanteensAdmin(): Promise<AdminFoodCanteen[]> {
+  if (USE_MOCK) return [];
+  return request('/admin/food/canteens');
+}
+
+export async function getFoodStatsAdmin(): Promise<AdminFoodStats> {
+  if (USE_MOCK) {
+    return {
+      merchants: {},
+      activeCanteens: 0,
+      activeStaff: 0,
+      pendingInvitations: 0,
+      moderation: { products: 0, posts: 0, reviews: 0, replies: 0, total: 0 },
+    };
+  }
+  return request('/admin/food/stats');
+}
+
+export async function listFoodMerchantsAdmin(
+  opts: {
+    status?: AdminFoodMerchant['status'];
+    q?: string;
+    page?: number;
+    pageSize?: number;
+  } = {},
+): Promise<PaginatedResponse<AdminFoodMerchant>> {
+  if (USE_MOCK) {
+    return {
+      items: [],
+      total: 0,
+      page: opts.page ?? 1,
+      pageSize: opts.pageSize ?? 50,
+      totalPages: 0,
+    };
+  }
+  const params = new URLSearchParams();
+  if (opts.status) params.set('status', opts.status);
+  if (opts.q) params.set('q', opts.q);
+  if (opts.page) params.set('page', String(opts.page));
+  if (opts.pageSize) params.set('pageSize', String(opts.pageSize));
+  const query = params.toString();
+  return request(`/admin/food/merchants${query ? `?${query}` : ''}`);
+}
+
+export async function createFoodMerchantAdmin(data: {
+  slug: string;
+  name: string;
+  description?: string;
+  contactDisplay?: string;
+}): Promise<{ id: string; slug: string; name: string }> {
+  return request('/admin/food/merchants', { method: 'POST', body: JSON.stringify(data) });
+}
+
+export async function updateFoodMerchantAdmin(
+  id: string,
+  data: {
+    name?: string;
+    description?: string;
+    contactDisplay?: string;
+    status?: AdminFoodMerchant['status'];
+  },
+) {
+  return request<AdminFoodMerchant>(`/admin/food/merchants/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function createFoodCanteenAdmin(data: {
+  slug: string;
+  name: string;
+  description?: string;
+}) {
+  return request('/admin/food/canteens', { method: 'POST', body: JSON.stringify(data) });
+}
+
+export async function updateFoodCanteenAdmin(
+  id: string,
+  data: { name?: string; description?: string; isActive?: boolean },
+) {
+  return request<AdminFoodCanteen>(`/admin/food/canteens/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function createFoodWindowAdmin(
+  merchantId: string,
+  data: {
+    canteenId: string;
+    name: string;
+    windowNumber?: string;
+    floor?: number;
+    locationDescription?: string;
+  },
+) {
+  return request(`/admin/food/merchants/${merchantId}/windows`, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function updateFoodWindowAdmin(
+  id: string,
+  data: {
+    name?: string;
+    windowNumber?: string;
+    floor?: number;
+    locationDescription?: string;
+    isActive?: boolean;
+  },
+) {
+  return request<AdminFoodWindow>(`/admin/food/windows/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function createMerchantPortalInvitationAdmin(
+  merchantId: string,
+  data: { email: string; role?: 'owner' | 'editor' | 'viewer' },
+) {
+  return request<{
+    id: string;
+    email: string;
+    role: 'owner' | 'editor' | 'viewer';
+    inviteUrl: string;
+    expiresAt: string;
+  }>(`/admin/food/merchants/${merchantId}/invitations`, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function listFoodStaffAdmin(
+  opts: {
+    merchantId?: string;
+    status?: AdminFoodStaff['status'];
+    q?: string;
+    page?: number;
+    pageSize?: number;
+  } = {},
+): Promise<PaginatedResponse<AdminFoodStaff>> {
+  if (USE_MOCK) {
+    return {
+      items: [],
+      total: 0,
+      page: opts.page ?? 1,
+      pageSize: opts.pageSize ?? 100,
+      totalPages: 0,
+    };
+  }
+  const params = new URLSearchParams();
+  if (opts.merchantId) params.set('merchantId', opts.merchantId);
+  if (opts.status) params.set('status', opts.status);
+  if (opts.q) params.set('q', opts.q);
+  if (opts.page) params.set('page', String(opts.page));
+  if (opts.pageSize) params.set('pageSize', String(opts.pageSize));
+  const query = params.toString();
+  return request(`/admin/food/staff${query ? `?${query}` : ''}`);
+}
+
+export async function revokeFoodStaffAdmin(id: string) {
+  return request<{ ok: true }>(`/admin/food/staff/${id}/revoke`, { method: 'POST' });
+}
+
+export async function updateFoodStaffAdmin(
+  id: string,
+  data: { role?: AdminFoodStaff['role']; status?: AdminFoodStaff['status'] },
+) {
+  return request<{
+    id: string;
+    role: AdminFoodStaff['role'];
+    status: AdminFoodStaff['status'];
+    revokedAt: string | null;
+  }>(`/admin/food/staff/${id}`, { method: 'PATCH', body: JSON.stringify(data) });
+}
+
+export async function listFoodInvitationsAdmin(
+  opts: {
+    merchantId?: string;
+    status?: AdminFoodInvitation['status'];
+    page?: number;
+    pageSize?: number;
+  } = {},
+): Promise<PaginatedResponse<AdminFoodInvitation>> {
+  if (USE_MOCK) {
+    return {
+      items: [],
+      total: 0,
+      page: opts.page ?? 1,
+      pageSize: opts.pageSize ?? 100,
+      totalPages: 0,
+    };
+  }
+  const params = new URLSearchParams();
+  if (opts.merchantId) params.set('merchantId', opts.merchantId);
+  if (opts.status) params.set('status', opts.status);
+  if (opts.page) params.set('page', String(opts.page));
+  if (opts.pageSize) params.set('pageSize', String(opts.pageSize));
+  const query = params.toString();
+  return request(`/admin/food/invitations${query ? `?${query}` : ''}`);
+}
+
+export async function revokeFoodInvitationAdmin(id: string) {
+  return request<{ ok: true }>(`/admin/food/invitations/${id}/revoke`, { method: 'POST' });
+}
+
+export async function listFoodPostsAdmin(
+  opts: {
+    status?: ContentStatus;
+    q?: string;
+    page?: number;
+    pageSize?: number;
+  } = {},
+): Promise<PaginatedResponse<AdminFoodPost>> {
+  if (USE_MOCK) {
+    return {
+      items: [],
+      total: 0,
+      page: opts.page ?? 1,
+      pageSize: opts.pageSize ?? 50,
+      totalPages: 0,
+    };
+  }
+  const params = new URLSearchParams();
+  if (opts.status) params.set('status', opts.status);
+  if (opts.q) params.set('q', opts.q);
+  if (opts.page) params.set('page', String(opts.page));
+  if (opts.pageSize) params.set('pageSize', String(opts.pageSize));
+  const query = params.toString();
+  return request(`/admin/food/posts${query ? `?${query}` : ''}`);
+}
+
+export async function listFoodReviewsAdmin(
+  opts: {
+    status?: ContentStatus;
+    q?: string;
+    page?: number;
+    pageSize?: number;
+  } = {},
+): Promise<PaginatedResponse<AdminFoodReview>> {
+  if (USE_MOCK) {
+    return {
+      items: [],
+      total: 0,
+      page: opts.page ?? 1,
+      pageSize: opts.pageSize ?? 50,
+      totalPages: 0,
+    };
+  }
+  const params = new URLSearchParams();
+  if (opts.status) params.set('status', opts.status);
+  if (opts.q) params.set('q', opts.q);
+  if (opts.page) params.set('page', String(opts.page));
+  if (opts.pageSize) params.set('pageSize', String(opts.pageSize));
+  const query = params.toString();
+  return request(`/admin/food/reviews${query ? `?${query}` : ''}`);
+}
+
+export async function listFoodRepliesAdmin(
+  opts: {
+    status?: ContentStatus;
+    q?: string;
+    page?: number;
+    pageSize?: number;
+  } = {},
+): Promise<PaginatedResponse<AdminFoodReply>> {
+  if (USE_MOCK) {
+    return {
+      items: [],
+      total: 0,
+      page: opts.page ?? 1,
+      pageSize: opts.pageSize ?? 50,
+      totalPages: 0,
+    };
+  }
+  const params = new URLSearchParams();
+  if (opts.status) params.set('status', opts.status);
+  if (opts.q) params.set('q', opts.q);
+  if (opts.page) params.set('page', String(opts.page));
+  if (opts.pageSize) params.set('pageSize', String(opts.pageSize));
+  const query = params.toString();
+  return request(`/admin/food/replies${query ? `?${query}` : ''}`);
+}
+
+export async function listFoodProductsAdmin(
+  opts: {
+    status?: AdminFoodProduct['status'];
+    merchantId?: string;
+    q?: string;
+    page?: number;
+    pageSize?: number;
+  } = {},
+): Promise<PaginatedResponse<AdminFoodProduct>> {
+  if (USE_MOCK) {
+    return {
+      items: [],
+      total: 0,
+      page: opts.page ?? 1,
+      pageSize: opts.pageSize ?? 50,
+      totalPages: 0,
+    };
+  }
+  const params = new URLSearchParams();
+  if (opts.status) params.set('status', opts.status);
+  if (opts.merchantId) params.set('merchantId', opts.merchantId);
+  if (opts.q) params.set('q', opts.q);
+  if (opts.page) params.set('page', String(opts.page));
+  if (opts.pageSize) params.set('pageSize', String(opts.pageSize));
+  const query = params.toString();
+  return request(`/admin/food/products${query ? `?${query}` : ''}`);
+}
+
+export async function applyFoodContentAction(
+  kind: 'posts' | 'products' | 'reviews' | 'replies',
+  id: string,
+  action: 'approve' | 'reject' | 'hide' | 'restore',
+  note?: string,
+) {
+  return request(`/admin/food/${kind}/${id}/action`, {
+    method: 'POST',
+    body: JSON.stringify({ action, note }),
   });
 }

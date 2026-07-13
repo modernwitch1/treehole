@@ -1,0 +1,13 @@
+node_modules
+dist
+build
+.next
+coverage
+pnpm-lock.yaml
+
+# Generated or imported datasets
+apps/api/seed_posts.json
+apps/web/src/data/compass.ts
+
+# Database migrations should remain byte-for-byte stable after creation
+apps/api/prisma/migrations

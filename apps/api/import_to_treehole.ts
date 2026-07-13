@@ -63,16 +63,16 @@ async function main() {
   }
 
   // 3. 将内容中的 \n 转为 Markdown 换行，并生成简单 HTML
-  const nl2br = (str: string) =>
-    str.replace(/\n/g, '<br/>');
+  const nl2br = (str: string) => str.replace(/\n/g, '<br/>');
 
   // 4. 批量插入帖子
   let inserted = 0;
   for (const p of posts) {
     const contentMd = p.content;
-    const contentHtml = nl2br(contentMd)
-      .replace(/#(浙工商|浙江工商大学|[\u4e00-\u9fa5]+)/g,
-        '<a href="/tag/$1" class="tag">#$1</a>');
+    const contentHtml = nl2br(contentMd).replace(
+      /#(浙工商|浙江工商大学|[\u4e00-\u9fa5]+)/g,
+      '<a href="/tag/$1" class="tag">#$1</a>',
+    );
 
     await prisma.post.create({
       data: {

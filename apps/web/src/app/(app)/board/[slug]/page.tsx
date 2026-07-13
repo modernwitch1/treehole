@@ -46,10 +46,7 @@ export default async function BoardPage({ params, searchParams }: BoardPageProps
     );
   }
 
-  const [page, user] = await Promise.all([
-    listPosts({ sort, tag: slug }),
-    getCurrentUser(),
-  ]);
+  const [page, user] = await Promise.all([listPosts({ sort, tag: slug }), getCurrentUser()]);
 
   return (
     <div className="space-y-4">
@@ -89,7 +86,12 @@ export default async function BoardPage({ params, searchParams }: BoardPageProps
         {/* 板块规则 */}
         {board.rules && (
           <div className="mt-4 rounded-lg border bg-muted/50 p-3">
-            <p className="text-xs font-medium text-muted-foreground">板块规则</p>
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-xs font-medium text-muted-foreground">板块规则</p>
+              <Link href="/rules" className="text-xs font-medium underline underline-offset-4">
+                查看社区总规则
+              </Link>
+            </div>
             <p className="mt-1 text-sm">{board.rules}</p>
           </div>
         )}

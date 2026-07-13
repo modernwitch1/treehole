@@ -19,9 +19,7 @@ import type { UserRole } from '@/types/api';
 
 const ADMIN_URL =
   process.env.NEXT_PUBLIC_ADMIN_URL ??
-  (process.env.NODE_ENV === 'production'
-    ? 'https://manage.unidating.top'
-    : 'http://localhost:3002');
+  (process.env.NODE_ENV === 'production' ? 'https://admin.unidating.top' : 'http://localhost:3002');
 
 interface PostMoreMenuProps {
   postId: string;
@@ -39,13 +37,21 @@ export function PostMoreMenu({ postId, currentUserRole }: PostMoreMenuProps) {
     currentUserRole === 'moderator';
 
   async function copyLink() {
-    await navigator.clipboard.writeText(`${window.location.origin}/p/${postId}`);
-    toast.success('链接已复制');
+    try {
+      await navigator.clipboard.writeText(`${window.location.origin}/p/${postId}`);
+      toast.success('链接已复制');
+    } catch {
+      toast.error('复制失败，请检查浏览器权限');
+    }
   }
 
   async function bookmark() {
-    const result = await toggleBookmark(postId);
-    toast.success(result.bookmarked ? '已收藏' : '已取消收藏');
+    try {
+      const result = await toggleBookmark(postId);
+      toast.success(result.bookmarked ? '已收藏' : '已取消收藏');
+    } catch {
+      toast.error('收藏失败，请稍后重试');
+    }
   }
 
   return (

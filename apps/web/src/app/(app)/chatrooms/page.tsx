@@ -57,24 +57,36 @@ export default function ChatroomsListPage() {
   const [bgPreview, setBgPreview] = React.useState<string | null>(null);
   const [submitting, setSubmitting] = React.useState(false);
   const [rulesAcknowledged, setRulesAcknowledged] = React.useState(false);
+  const [loadError, setLoadError] = React.useState('');
 
   const fetchRoomsAndUser = React.useCallback(async () => {
+    setLoading(true);
     try {
       const [allRooms, user] = await Promise.all([getChatrooms(), getCurrentUser()]);
       setRooms(allRooms);
       setCurrentUser(user);
+      setLoadError('');
     } catch (err) {
       console.error(err);
+      setLoadError((err as Error).message || '聊天房加载失败，请重试');
     } finally {
       setLoading(false);
     }
   }, []);
 
   React.useEffect(() => {
-    fetchRoomsAndUser();
-    // Poll for rooms list updates every 10 seconds
-    const interval = setInterval(fetchRoomsAndUser, 10000);
-    return () => clearInterval(interval);
+    void fetchRoomsAndUser();
+    const interval = window.setInterval(() => {
+      if (document.visibilityState === 'visible') void fetchRoomsAndUser();
+    }, 10000);
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') void fetchRoomsAndUser();
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => {
+      window.clearInterval(interval);
+      document.removeEventListener('visibilitychange', handleVisibility);
+    };
   }, [fetchRoomsAndUser]);
 
   // Handle image selections with 2MB validation
@@ -92,12 +104,26 @@ export default function ChatroomsListPage() {
     const previewUrl = URL.createObjectURL(file);
     if (type === 'avatar') {
       setAvatarFile(file);
-      setAvatarPreview(previewUrl);
+      setAvatarPreview((current) => {
+        if (current) URL.revokeObjectURL(current);
+        return previewUrl;
+      });
     } else {
       setBackgroundFile(file);
-      setBgPreview(previewUrl);
+      setBgPreview((current) => {
+        if (current) URL.revokeObjectURL(current);
+        return previewUrl;
+      });
     }
   };
+
+  React.useEffect(
+    () => () => {
+      if (avatarPreview) URL.revokeObjectURL(avatarPreview);
+      if (bgPreview) URL.revokeObjectURL(bgPreview);
+    },
+    [avatarPreview, bgPreview],
+  );
 
   const handleCreateRoom = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -140,8 +166,14 @@ export default function ChatroomsListPage() {
       setDescription('');
       setAvatarFile(null);
       setBackgroundFile(null);
-      setAvatarPreview(null);
-      setBgPreview(null);
+      setAvatarPreview((current) => {
+        if (current) URL.revokeObjectURL(current);
+        return null;
+      });
+      setBgPreview((current) => {
+        if (current) URL.revokeObjectURL(current);
+        return null;
+      });
       setRulesAcknowledged(false);
 
       // Redirect directly to the room
@@ -192,6 +224,14 @@ export default function ChatroomsListPage() {
 
   return (
     <div className="space-y-6">
+      {loadError && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm">
+          <span className="text-destructive">{loadError}</span>
+          <Button type="button" variant="outline" onClick={() => void fetchRoomsAndUser()}>
+            重试
+          </Button>
+        </div>
+      )}
       <header className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">在线聊天房</h1>
@@ -340,7 +380,11 @@ export default function ChatroomsListPage() {
                   className="mt-0.5"
                 />
                 <span>
-                  我确认房间主题、简介和后续发言均遵守社区规则，并知悉违规内容可能被拦截、处罚和依法依规溯源。
+                  我确认房间主题、简介和后续发言均遵守
+                  <Link href="/rules" className="mx-1 font-medium underline underline-offset-4">
+                    社区规则
+                  </Link>
+                  ，并知悉违规内容可能被拦截、处罚和依法依规溯源。
                 </span>
               </label>
 

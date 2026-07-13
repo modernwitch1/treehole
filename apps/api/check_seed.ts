@@ -11,12 +11,15 @@ async function main() {
     where: { boardId: board.id },
     orderBy: { createdAt: 'desc' },
     take: 5,
-    select: { title: true, upvotes: true, commentCount: true, createdAt: true }
+    select: { title: true, upvotes: true, commentCount: true, createdAt: true },
   });
   console.log('=== 最新 5 条帖子 ===');
-  posts.forEach((p, i) => console.log(`${i+1}. [${p.upvotes}赞] ${p.title}`));
+  posts.forEach((p, i) => console.log(`${i + 1}. [${p.upvotes}赞] ${p.title}`));
   const total = await prisma.post.count({ where: { boardId: board.id } });
-  const totalUpvotes = await prisma.post.aggregate({ where: { boardId: board.id }, _sum: { upvotes: true } });
+  const totalUpvotes = await prisma.post.aggregate({
+    where: { boardId: board.id },
+    _sum: { upvotes: true },
+  });
   console.log(`\n总计: ${total} 条帖子, 点赞总数: ${totalUpvotes._sum.upvotes || 0}`);
 }
 

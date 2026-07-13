@@ -184,7 +184,7 @@ function CommentNode({ comment, depth, postId, onChanged }: CommentNodeProps) {
             score={comment.score}
             myVote={comment.myVote}
             size="sm"
-            onVote={(v) => void voteComment(comment.id, v)}
+            onVote={(v) => voteComment(comment.id, v)}
           />
           <Button
             variant="ghost"
@@ -199,10 +199,16 @@ function CommentNode({ comment, depth, postId, onChanged }: CommentNodeProps) {
             variant="ghost"
             size="sm"
             onClick={() => {
-              void navigator.clipboard.writeText(
-                `${window.location.origin}/p/${postId}#comment-${comment.id}`,
-              );
-              toast.success('评论链接已复制');
+              void (async () => {
+                try {
+                  await navigator.clipboard.writeText(
+                    `${window.location.origin}/p/${postId}#comment-${comment.id}`,
+                  );
+                  toast.success('评论链接已复制');
+                } catch {
+                  toast.error('复制失败，请检查浏览器权限');
+                }
+              })();
             }}
             className="h-7 gap-1.5 rounded-full text-xs text-muted-foreground"
           >

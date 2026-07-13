@@ -3,55 +3,219 @@
 
 @custom-variant dark (&:where(.dark, .dark *));
 
-/* 校园蓝主题。对比度、层次与暗色模式均由同一组语义色控制。 */
+/* 校园编辑感主题：暖纸张底色、墨绿色主色与克制的层次。 */
 
 :root {
-  --background: #f6f8fc;
-  --foreground: #142033;
-  --card: #ffffff;
-  --card-foreground: #142033;
-  --popover: #ffffff;
-  --popover-foreground: #142033;
-  --primary: #0868c8;
+  --background: #f5f4ef;
+  --foreground: #1b2928;
+  --card: #fffefa;
+  --card-foreground: #1b2928;
+  --popover: #fffefa;
+  --popover-foreground: #1b2928;
+  --primary: #176b61;
   --primary-foreground: #ffffff;
-  --secondary: #edf3fb;
-  --secondary-foreground: #17314f;
-  --muted: #eef2f7;
-  --muted-foreground: #5d6b7e;
-  --accent: #e7f1fd;
-  --accent-foreground: #075aa9;
-  --destructive: #c9343a;
+  --secondary: #e7efec;
+  --secondary-foreground: #21463f;
+  --muted: #eceee9;
+  --muted-foreground: #64716e;
+  --accent: #e5f1ed;
+  --accent-foreground: #126056;
+  --destructive: #c84e4e;
   --destructive-foreground: #ffffff;
-  --upvote: #e64a19;
-  --downvote: #607d9f;
-  --border: #dfe5ee;
-  --input: #d7dfeb;
-  --ring: #0868c8;
-  --radius: 0.75rem;
+  --upvote: #dc744d;
+  --downvote: #71827f;
+  --border: #dfe5df;
+  --input: #cfdcd6;
+  --ring: #176b61;
+  --radius: 0.625rem;
+  --hero-background: #173b36;
+  --hero-border: #2d6259;
+  --hero-accent: #f1b27e;
+  --hero-decoration: #72c6b6;
 }
 
 .dark {
-  --background: #07111f;
-  --foreground: #edf4ff;
-  --card: #0c192a;
-  --card-foreground: #edf4ff;
-  --popover: #101d2f;
-  --popover-foreground: #edf4ff;
-  --primary: #5aaaff;
-  --primary-foreground: #061426;
-  --secondary: #14243a;
-  --secondary-foreground: #e4efff;
-  --muted: #142235;
-  --muted-foreground: #9caec4;
-  --accent: #173a5f;
-  --accent-foreground: #dcecff;
-  --destructive: #f16c72;
-  --destructive-foreground: #240507;
-  --upvote: #ff7651;
-  --downvote: #8ca8c8;
-  --border: #24364c;
-  --input: #32475f;
-  --ring: #5aaaff;
+  --background: #101917;
+  --foreground: #edf5f2;
+  --card: #172522;
+  --card-foreground: #edf5f2;
+  --popover: #1b2b27;
+  --popover-foreground: #edf5f2;
+  --primary: #79c8ba;
+  --primary-foreground: #09201c;
+  --secondary: #203530;
+  --secondary-foreground: #e5f2ee;
+  --muted: #1b2b27;
+  --muted-foreground: #9cb1ac;
+  --accent: #25463f;
+  --accent-foreground: #ddf2ec;
+  --destructive: #ef7d7d;
+  --destructive-foreground: #2a0c0c;
+  --upvote: #f09a72;
+  --downvote: #9bb1ac;
+  --border: #2b3e39;
+  --input: #3a504a;
+  --ring: #79c8ba;
+  --hero-background: #19312e;
+  --hero-border: #3b625b;
+  --hero-accent: #f1b27e;
+  --hero-decoration: #72c6b6;
+}
+
+:root[data-palette='pink'] {
+  --background: #fbf4f6;
+  --foreground: #30242a;
+  --card: #fffafd;
+  --card-foreground: #30242a;
+  --popover: #fffafd;
+  --popover-foreground: #30242a;
+  --primary: #b95375;
+  --primary-foreground: #ffffff;
+  --secondary: #f5e6ec;
+  --secondary-foreground: #5d2e40;
+  --muted: #f2eaed;
+  --muted-foreground: #786a70;
+  --accent: #f9e7ee;
+  --accent-foreground: #9d3f61;
+  --border: #ecd9e1;
+  --input: #e1cbd5;
+  --ring: #b95375;
+  --upvote: #cf6b84;
+  --downvote: #8c7b82;
+  --hero-background: #5a3042;
+  --hero-border: #8b5068;
+  --hero-accent: #f3b3c4;
+  --hero-decoration: #d985a1;
+}
+
+.dark[data-palette='pink'] {
+  --background: #201419;
+  --foreground: #faeef2;
+  --card: #2d1e25;
+  --card-foreground: #faeef2;
+  --popover: #34232b;
+  --popover-foreground: #faeef2;
+  --primary: #f29fba;
+  --primary-foreground: #32131e;
+  --secondary: #402932;
+  --secondary-foreground: #f9e8ee;
+  --muted: #38242c;
+  --muted-foreground: #c8aeb8;
+  --accent: #51303f;
+  --accent-foreground: #ffe3ec;
+  --border: #4c303c;
+  --input: #60414d;
+  --ring: #f29fba;
+  --upvote: #f39ab3;
+  --downvote: #c6aab4;
+  --hero-background: #3d202d;
+  --hero-border: #704054;
+  --hero-accent: #f3b3c4;
+  --hero-decoration: #d985a1;
+}
+
+:root[data-palette='blue'] {
+  --background: #f3f6fa;
+  --foreground: #1d2a38;
+  --card: #fbfdff;
+  --card-foreground: #1d2a38;
+  --popover: #fbfdff;
+  --popover-foreground: #1d2a38;
+  --primary: #356ea8;
+  --primary-foreground: #ffffff;
+  --secondary: #e7eff7;
+  --secondary-foreground: #264d76;
+  --muted: #edf1f5;
+  --muted-foreground: #657484;
+  --accent: #e6f0fa;
+  --accent-foreground: #2c6298;
+  --border: #dce5ef;
+  --input: #cedbe8;
+  --ring: #356ea8;
+  --upvote: #d87952;
+  --downvote: #71849a;
+  --hero-background: #244e78;
+  --hero-border: #4778a9;
+  --hero-accent: #b9d7f3;
+  --hero-decoration: #7fb5e3;
+}
+
+.dark[data-palette='blue'] {
+  --background: #101923;
+  --foreground: #edf5ff;
+  --card: #172435;
+  --card-foreground: #edf5ff;
+  --popover: #1c2b3f;
+  --popover-foreground: #edf5ff;
+  --primary: #83b8e8;
+  --primary-foreground: #102238;
+  --secondary: #22364d;
+  --secondary-foreground: #e4f0ff;
+  --muted: #1e3043;
+  --muted-foreground: #a8b9cb;
+  --accent: #284b70;
+  --accent-foreground: #e1efff;
+  --border: #30465d;
+  --input: #405a75;
+  --ring: #83b8e8;
+  --upvote: #f09a72;
+  --downvote: #a9bdd2;
+  --hero-background: #1c3858;
+  --hero-border: #426b94;
+  --hero-accent: #b9d7f3;
+  --hero-decoration: #7fb5e3;
+}
+
+:root[data-palette='beige'] {
+  --background: #f7f1e7;
+  --foreground: #312920;
+  --card: #fffcf6;
+  --card-foreground: #312920;
+  --popover: #fffcf6;
+  --popover-foreground: #312920;
+  --primary: #9b6b48;
+  --primary-foreground: #ffffff;
+  --secondary: #f2e5d6;
+  --secondary-foreground: #66442d;
+  --muted: #f0e9de;
+  --muted-foreground: #786e63;
+  --accent: #faeee1;
+  --accent-foreground: #875735;
+  --border: #e9ddd0;
+  --input: #ddcdbd;
+  --ring: #9b6b48;
+  --upvote: #c87850;
+  --downvote: #887c6f;
+  --hero-background: #5b4532;
+  --hero-border: #89684b;
+  --hero-accent: #f1c493;
+  --hero-decoration: #c99b6e;
+}
+
+.dark[data-palette='beige'] {
+  --background: #1d1712;
+  --foreground: #faf2e7;
+  --card: #292019;
+  --card-foreground: #faf2e7;
+  --popover: #32261d;
+  --popover-foreground: #faf2e7;
+  --primary: #e4b78b;
+  --primary-foreground: #332014;
+  --secondary: #3e3024;
+  --secondary-foreground: #f6e7d5;
+  --muted: #34281f;
+  --muted-foreground: #c7b29b;
+  --accent: #513c2c;
+  --accent-foreground: #ffe8cb;
+  --border: #4d3c2d;
+  --input: #65503d;
+  --ring: #e4b78b;
+  --upvote: #f0a277;
+  --downvote: #c6b39d;
+  --hero-background: #38291e;
+  --hero-border: #604a35;
+  --hero-accent: #f1c493;
+  --hero-decoration: #c99b6e;
 }
 
 @theme inline {
@@ -147,13 +311,25 @@
 @layer utilities {
   .app-shell {
     background:
-      radial-gradient(circle at 75% -8%, color-mix(in srgb, var(--primary) 8%, transparent), transparent 31rem),
-      linear-gradient(180deg, color-mix(in srgb, var(--background) 82%, white), var(--background) 22rem);
+      radial-gradient(
+        circle at 88% -10%,
+        color-mix(in srgb, var(--primary) 7%, transparent),
+        transparent 32rem
+      ),
+      linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--background) 88%, white),
+        var(--background) 28rem
+      );
   }
 
   .dark .app-shell {
     background:
-      radial-gradient(circle at 75% -8%, color-mix(in srgb, var(--primary) 11%, transparent), transparent 34rem),
+      radial-gradient(
+        circle at 88% -10%,
+        color-mix(in srgb, var(--primary) 10%, transparent),
+        transparent 34rem
+      ),
       var(--background);
   }
 
@@ -179,28 +355,26 @@
 
   .shadow-card {
     box-shadow:
-      0 1px 2px rgba(25, 45, 72, 0.04),
-      0 8px 24px -18px rgba(25, 45, 72, 0.35);
+      0 1px 2px rgba(25, 50, 45, 0.035),
+      0 8px 22px -18px rgba(25, 50, 45, 0.28);
   }
 
   .dark .shadow-card {
     box-shadow:
-      0 1px 2px rgba(0, 0, 0, 0.3),
-      0 12px 30px -20px rgba(0, 0, 0, 0.8);
+      0 1px 2px rgba(0, 0, 0, 0.28),
+      0 12px 30px -20px rgba(0, 0, 0, 0.72);
   }
 
   .shadow-card-hover {
     transition:
       border-color 180ms ease,
-      box-shadow 180ms ease,
-      transform 180ms ease;
+      box-shadow 180ms ease;
   }
 
   .shadow-card-hover:hover {
     box-shadow:
-      0 2px 4px rgba(25, 45, 72, 0.04),
-      0 16px 34px -22px rgba(20, 69, 119, 0.38);
-    transform: translateY(-2px);
+      0 2px 4px rgba(25, 50, 45, 0.04),
+      0 16px 34px -22px rgba(24, 91, 81, 0.28);
   }
 
   .dark .shadow-card-hover:hover {
@@ -234,9 +408,5 @@
     animation-iteration-count: 1 !important;
     scroll-behavior: auto !important;
     transition-duration: 0.01ms !important;
-  }
-
-  .shadow-card-hover:hover {
-    transform: none;
   }
 }

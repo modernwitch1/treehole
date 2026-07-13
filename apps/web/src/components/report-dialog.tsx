@@ -26,13 +26,7 @@ const CATEGORIES: Array<{ value: ReportCategory; label: string }> = [
 ];
 
 interface ReportDialogProps {
-  targetType:
-    | 'post'
-    | 'comment'
-    | 'user'
-    | 'conversation'
-    | 'direct_message'
-    | 'chatroom_message';
+  targetType: 'post' | 'comment' | 'user' | 'conversation' | 'direct_message' | 'chatroom_message';
   targetId: string;
   evidenceMessageIds?: string[];
   trigger: React.ReactNode;

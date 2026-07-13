@@ -351,10 +351,13 @@ export class AdminController {
     @Query('pageSize') pageSize?: string,
     @Req() req?: AdminRequest,
   ) {
-    return this.admin.listPendingUploads({
-      page: page ? parseInt(page, 10) : undefined,
-      pageSize: pageSize ? parseInt(pageSize, 10) : undefined,
-    }, this.currentAdmin(req));
+    return this.admin.listPendingUploads(
+      {
+        page: page ? parseInt(page, 10) : undefined,
+        pageSize: pageSize ? parseInt(pageSize, 10) : undefined,
+      },
+      this.currentAdmin(req),
+    );
   }
 
   @Get('appeals')
@@ -417,10 +420,13 @@ export class AdminController {
     @Query('pageSize') pageSize?: string,
     @Req() req?: AdminRequest,
   ) {
-    return this.admin.listAnnouncements({
-      page: page ? parseInt(page, 10) : undefined,
-      pageSize: pageSize ? parseInt(pageSize, 10) : undefined,
-    }, this.currentAdmin(req));
+    return this.admin.listAnnouncements(
+      {
+        page: page ? parseInt(page, 10) : undefined,
+        pageSize: pageSize ? parseInt(pageSize, 10) : undefined,
+      },
+      this.currentAdmin(req),
+    );
   }
 
   @Post('announcements')

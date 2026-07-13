@@ -7,6 +7,7 @@ import {
   PasswordResetConfirmDto,
   PasswordResetRequestDto,
   RegisterDto,
+  ResendEmailCodeDto,
   StudentPasswordDto,
   VerifyEmailDto,
 } from './auth.dto';
@@ -28,6 +29,12 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   async verifyEmail(@Body() body: VerifyEmailDto, @Req() req: Request) {
     return this.auth.verifyEmailCode(body.studentId, body.code, req.ip, req.headers['user-agent']);
+  }
+
+  @Post('auth/resend-email-code')
+  @HttpCode(HttpStatus.OK)
+  async resendEmailCode(@Body() body: ResendEmailCodeDto, @Req() req: Request) {
+    return this.auth.resendEmailCode(body.studentId, req.ip, req.headers['user-agent']);
   }
 
   @Post('auth/check-registration')

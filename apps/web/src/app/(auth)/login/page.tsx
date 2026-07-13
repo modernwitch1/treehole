@@ -2,13 +2,23 @@
 
 import * as React from 'react';
 import Link from 'next/link';
-import { BrandMark } from '@/components/brand-mark';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Loader2, Clock, CheckCircle2, XCircle, AlertTriangle, Hourglass } from 'lucide-react';
+import {
+  AlertTriangle,
+  ArrowRight,
+  CheckCircle2,
+  Clock,
+  Hourglass,
+  KeyRound,
+  Loader2,
+  ShieldCheck,
+  UserRound,
+  XCircle,
+} from 'lucide-react';
 import { login } from '@/lib/api';
 import { mockLogin } from '@/lib/auth-mock';
 import { toast } from 'sonner';
@@ -96,26 +106,38 @@ export default function LoginPage() {
   const cfg = regStatus ? STATUS_CONFIG[regStatus] : null;
 
   return (
-    <Card className="border-border/60 shadow-card">
-      <CardHeader className="space-y-2 text-center">
-        <BrandMark className="mx-auto size-12 lg:hidden" />
-        <CardTitle className="text-2xl tracking-tight">欢迎回来</CardTitle>
-        <CardDescription>输入学号和密码登录浙工商树洞</CardDescription>
+    <Card className="overflow-hidden rounded-3xl border-border/60 bg-card/90 shadow-[0_24px_70px_-32px_rgba(15,23,42,0.45)] backdrop-blur-xl">
+      <div className="h-1 bg-gradient-to-r from-primary via-orange-400 to-sky-400" />
+      <CardHeader className="space-y-4 px-6 pb-5 pt-7 sm:px-8 sm:pt-8">
+        <div className="inline-flex w-fit items-center gap-2 rounded-full border border-primary/15 bg-primary/[0.07] px-3 py-1.5 text-xs font-medium text-primary">
+          <span className="size-1.5 rounded-full bg-emerald-500" />
+          ZJGSU · CAMPUS COMMUNITY
+        </div>
+        <div>
+          <CardTitle className="text-3xl tracking-[-0.04em]">欢迎回到树洞</CardTitle>
+          <CardDescription className="mt-2 leading-6">
+            登录后继续和同学分享校园里的每一件小事
+          </CardDescription>
+        </div>
       </CardHeader>
-      <CardContent>
-        <form onSubmit={handleSubmit} className="space-y-4">
+      <CardContent className="px-6 pb-7 sm:px-8 sm:pb-8">
+        <form onSubmit={handleSubmit} className="space-y-5">
           <div className="space-y-2">
             <Label htmlFor="studentId">学号</Label>
-            <Input
-              id="studentId"
-              value={studentId}
-              onChange={(e) => {
-                setStudentId(e.target.value);
-                setRegStatus(null);
-              }}
-              placeholder="20231234001"
-              required
-            />
+            <div className="relative">
+              <UserRound className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                id="studentId"
+                value={studentId}
+                onChange={(e) => {
+                  setStudentId(e.target.value);
+                  setRegStatus(null);
+                }}
+                placeholder="请输入学号"
+                className="h-12 rounded-xl bg-muted/25 pl-10 shadow-none"
+                required
+              />
+            </div>
           </div>
           <div className="space-y-2">
             <div className="flex items-center justify-between">
@@ -127,27 +149,52 @@ export default function LoginPage() {
                 忘记密码?
               </Link>
             </div>
-            <Input
-              id="password"
-              type="password"
-              value={password}
-              onChange={(e) => {
-                setPassword(e.target.value);
-                setRegStatus(null);
-              }}
-              required
-            />
+            <div className="relative">
+              <KeyRound className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                id="password"
+                type="password"
+                value={password}
+                onChange={(e) => {
+                  setPassword(e.target.value);
+                  setRegStatus(null);
+                }}
+                placeholder="请输入登录密码"
+                className="h-12 rounded-xl bg-muted/25 pl-10 shadow-none"
+                required
+              />
+            </div>
           </div>
-          <Button type="submit" className="w-full" disabled={checking}>
-            {checking && <Loader2 className="mr-2 size-4 animate-spin" />}
-            {checking ? '查询中…' : '登录'}
+          <Button
+            type="submit"
+            className="h-12 w-full rounded-xl bg-primary text-base font-semibold shadow-lg shadow-primary/20 transition-transform hover:shadow-primary/30 active:scale-[0.99]"
+            disabled={checking}
+          >
+            {checking ? (
+              <>
+                <Loader2 className="size-4 animate-spin" />
+                查询中…
+              </>
+            ) : (
+              <>
+                登录
+                <ArrowRight className="size-4" />
+              </>
+            )}
           </Button>
         </form>
+
+        <div className="mt-5 flex items-start gap-2.5 rounded-2xl bg-muted/45 p-3.5 text-xs leading-5 text-muted-foreground">
+          <ShieldCheck className="mt-0.5 size-4 shrink-0 text-primary" />
+          <p>
+            校园邮箱用于身份验证，帖子和评论默认匿名展示。请和大家一起维护友善、安全的校园社区。
+          </p>
+        </div>
 
         {regStatus && cfg && (
           <div
             className={cn(
-              'mt-4 rounded-lg border p-4 space-y-2',
+              'mt-4 space-y-2 rounded-2xl border p-4',
               regStatus === 'approved' ? 'border-green-500/30 bg-green-500/5' : 'bg-muted/50',
             )}
           >
@@ -176,10 +223,17 @@ export default function LoginPage() {
         )}
 
         <p className="mt-6 text-center text-sm text-muted-foreground">
-          还没有账号?{' '}
+          还没有账号？{' '}
           <Link href="/register" className="font-medium text-foreground hover:underline">
             注册
           </Link>
+        </p>
+        <p className="mt-3 text-center text-xs text-muted-foreground/75">
+          <Link href="/community-rules" className="hover:text-foreground hover:underline">
+            社区规则
+          </Link>
+          <span className="mx-2">·</span>
+          学生专属 · 非官方平台
         </p>
       </CardContent>
     </Card>

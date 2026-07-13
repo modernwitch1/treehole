@@ -618,12 +618,16 @@ export default function AdminChatroomsPage() {
                         </span>
                         {msg.caseId ? (
                           <Button variant="link" className="h-auto p-0 text-sm" asChild>
-                            <Link href={`/moderation?status=all&caseId=${msg.caseId}#case-${msg.caseId}`}>
+                            <Link
+                              href={`/moderation?status=all&caseId=${msg.caseId}#case-${msg.caseId}`}
+                            >
                               案件 #{msg.caseId} · 前往复核
                             </Link>
                           </Button>
                         ) : (
-                          <p className="text-sm text-muted-foreground">尚未关联，请重新执行“标记违规”</p>
+                          <p className="text-sm text-muted-foreground">
+                            尚未关联，请重新执行“标记违规”
+                          </p>
                         )}
                       </div>
 

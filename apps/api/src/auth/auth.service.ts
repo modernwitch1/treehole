@@ -9,6 +9,7 @@ import { JwtService } from '@nestjs/jwt';
 import { createHash, randomBytes, randomInt, randomUUID } from 'crypto';
 import { PrismaService } from '../prisma/prisma.module';
 import { AppConfig } from '../config/app.config';
+import { isTrustedRegistrationUploadReference } from '../upload/media-url';
 import { RedisService } from '../redis/redis.module';
 import { MailService } from './mail.service';
 import { RateLimitService } from '../common/security/rate-limit.service';
@@ -94,31 +95,75 @@ export class AuthService {
     if (existing && existing.status === 'pending') {
       throw new ConflictException('该学号已有待审批的注册申请');
     }
+    if (existing && existing.status === 'approved') {
+      throw new ConflictException('该学号已经完成注册，请直接登录');
+    }
+
+    const emailRequest = await this.prisma.registrationRequest.findUnique({
+      where: { email },
+      select: { id: true },
+    });
+    if (emailRequest && emailRequest.id !== existing?.id) {
+      throw new ConflictException('该邮箱已有注册记录');
+    }
+    const existingUser = await this.prisma.user.findUnique({
+      where: { email },
+      select: { id: true },
+    });
+    if (existingUser) {
+      throw new ConflictException('该邮箱已经注册，请直接登录');
+    }
 
     const { hash } = await import('argon2');
     const passwordHash = await hash(data.password);
-    const expiresAt = new Date(Date.now() + 24 * 3600 * 1000);
+    const now = new Date();
+    const expiresAt = new Date(now.getTime() + 24 * 3600 * 1000);
 
     const verificationCode = data.method === 'email' ? String(randomInt(100000, 1_000_000)) : null;
 
-    const request = await this.prisma.registrationRequest.create({
-      data: {
-        studentId,
-        email,
-        passwordHash,
-        username,
-        realName,
-        method: data.method,
-        screenshotUrl: data.screenshotUrl,
-        verificationCode,
-        policyVersion: COMMUNITY_RULES_VERSION,
-        policyAcceptedAt: new Date(),
-        policyAcceptedIp: ip === 'unknown' ? null : ip,
-        policyAcceptedUserAgent: userAgent?.slice(0, 512),
-        status: 'pending',
-        expiresAt,
-      },
-    });
+    const request = existing
+      ? await this.prisma.registrationRequest.update({
+          where: { id: existing.id },
+          data: {
+            email,
+            passwordHash,
+            username,
+            realName,
+            method: data.method,
+            screenshotUrl: data.screenshotUrl,
+            verificationCode,
+            policyVersion: COMMUNITY_RULES_VERSION,
+            policyAcceptedAt: now,
+            policyAcceptedIp: ip === 'unknown' ? null : ip,
+            policyAcceptedUserAgent: userAgent?.slice(0, 512),
+            status: 'pending',
+            reviewNote: null,
+            reviewedBy: null,
+            reviewedAt: null,
+            credentialsPurgedAt: null,
+            expiresAt,
+            createdAt: now,
+          },
+        })
+      : await this.prisma.registrationRequest.create({
+          data: {
+            studentId,
+            email,
+            passwordHash,
+            username,
+            realName,
+            method: data.method,
+            screenshotUrl: data.screenshotUrl,
+            verificationCode,
+            policyVersion: COMMUNITY_RULES_VERSION,
+            policyAcceptedAt: now,
+            policyAcceptedIp: ip === 'unknown' ? null : ip,
+            policyAcceptedUserAgent: userAgent?.slice(0, 512),
+            status: 'pending',
+            expiresAt,
+            createdAt: now,
+          },
+        });
 
     if (data.method === 'email') {
       try {
@@ -177,6 +222,53 @@ export class AuthService {
 
     await this.activateUser(request, ip, userAgent);
     return { ok: true };
+  }
+
+  async resendEmailCode(studentId: string, ip = 'unknown', _userAgent?: string) {
+    const normalizedStudentId = studentId.trim();
+    await Promise.all([
+      this.rateLimit.consume('resend-email-code-ip', ip, 10, 15 * 60),
+      this.rateLimit.consume(
+        'resend-email-code-account',
+        normalizedStudentId.toLowerCase(),
+        5,
+        15 * 60,
+      ),
+    ]);
+
+    const request = await this.prisma.registrationRequest.findUnique({
+      where: { studentId: normalizedStudentId },
+    });
+    if (!request || request.method !== 'email' || !request.email) {
+      throw new BadRequestException('未找到可重新发送验证码的邮箱注册记录');
+    }
+    if (request.status !== 'pending') {
+      throw new BadRequestException('该注册申请已处理，请重新提交注册');
+    }
+    if (request.expiresAt <= new Date()) {
+      await this.prisma.registrationRequest.update({
+        where: { id: request.id },
+        data: { status: 'expired' },
+      });
+      throw new BadRequestException('注册申请已过期，请重新提交');
+    }
+
+    const verificationCode = String(randomInt(100000, 1_000_000));
+    const expiresAt = new Date(Date.now() + 24 * 3600 * 1000);
+    await this.prisma.registrationRequest.update({
+      where: { id: request.id },
+      data: { verificationCode, expiresAt },
+    });
+
+    try {
+      await this.mail.sendVerificationCode(request.email, verificationCode);
+      this.logger.log(`Verification code resent for registration ${request.id}`);
+    } catch (error) {
+      this.logger.error(`Failed to resend verification code for registration ${request.id}`, error);
+      throw new BadRequestException('验证码邮件发送失败，请稍后重试');
+    }
+
+    return { ok: true, expiresAt: expiresAt.toISOString() };
   }
 
   async checkRegistration(studentId: string, password: string, ip = 'unknown') {
@@ -253,6 +345,7 @@ export class AuthService {
       this.rateLimit.consume('login-ip', ip ?? 'unknown', 40, 15 * 60),
       this.rateLimit.consume('login-account', normalizedStudentId.toLowerCase(), 12, 15 * 60),
     ]);
+
     const request = await this.prisma.registrationRequest.findUnique({
       where: { studentId: normalizedStudentId },
     });
@@ -662,25 +755,9 @@ export class AuthService {
   }
 
   private isTrustedUploadUrl(value: string | undefined, folder: 'registrations'): boolean {
-    if (!value) {
-      return false;
-    }
-    try {
-      const base = new URL(`${this.config.get('CDN_BASE_URL').replace(/\/+$/, '')}/`);
-      const url = new URL(value);
-      const expectedPrefix = `${base.pathname}${folder}/`.replace(/\/+/g, '/');
-      return (
-        url.protocol === base.protocol &&
-        url.host === base.host &&
-        !url.username &&
-        !url.password &&
-        !url.search &&
-        !url.hash &&
-        url.pathname.startsWith(expectedPrefix)
-      );
-    } catch {
-      return false;
-    }
+    return folder === 'registrations'
+      ? isTrustedRegistrationUploadReference(value, this.config.get('CDN_BASE_URL'))
+      : false;
   }
 
   private truncate(value: string | undefined, max: number): string | undefined {

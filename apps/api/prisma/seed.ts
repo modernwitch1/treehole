@@ -109,6 +109,28 @@ async function main() {
   }
   console.log(`✅ ${starter.length} sensitive word entries.`);
 
+  console.log('🌱 Seeding food canteens…');
+  const canteens = [
+    {
+      slug: 'xingyun',
+      name: '行云苑',
+      description: '行云苑食堂，当前开放二楼商家窗口。',
+    },
+    {
+      slug: 'liushui',
+      name: '流水苑',
+      description: '流水苑食堂，当前开放二楼商家窗口。',
+    },
+  ];
+  for (const canteen of canteens) {
+    await prisma.foodCanteen.upsert({
+      where: { slug: canteen.slug },
+      update: canteen,
+      create: canteen,
+    });
+  }
+  console.log(`✅ ${canteens.length} food canteens ready.`);
+
   console.log('🌱 Seeding test users…');
   const { hash } = await import('argon2');
   const passwordHash = await hash('123qweasd!');

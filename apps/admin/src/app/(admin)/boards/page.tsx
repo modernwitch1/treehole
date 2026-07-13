@@ -24,11 +24,7 @@ import {
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
-import {
-  listBoardApplications,
-  approveBoardApplication,
-  rejectBoardApplication,
-} from '@/lib/api';
+import { listBoardApplications, approveBoardApplication, rejectBoardApplication } from '@/lib/api';
 import { relativeTime } from '@/lib/format';
 import type { BoardApplication } from '@/types/admin';
 
@@ -93,9 +89,7 @@ export default function BoardsPage() {
         {loading ? (
           <div className="py-12 text-center text-sm text-muted-foreground">加载中…</div>
         ) : applications.length === 0 ? (
-          <div className="py-12 text-center text-sm text-muted-foreground">
-            暂无待审批的申请
-          </div>
+          <div className="py-12 text-center text-sm text-muted-foreground">暂无待审批的申请</div>
         ) : (
           <Table>
             <TableHeader>
@@ -120,14 +114,10 @@ export default function BoardsPage() {
                     </p>
                   </TableCell>
                   <TableCell>
-                    <span className="text-sm">
-                      {app.applicant?.username ?? '未知用户'}
-                    </span>
+                    <span className="text-sm">{app.applicant?.username ?? '未知用户'}</span>
                   </TableCell>
                   <TableCell>
-                    <p className="line-clamp-2 max-w-[260px] text-sm">
-                      {app.applyReason}
-                    </p>
+                    <p className="line-clamp-2 max-w-[260px] text-sm">{app.applyReason}</p>
                   </TableCell>
                   <TableCell className="text-xs text-muted-foreground">
                     {app.appliedAt ? relativeTime(app.appliedAt) : '—'}
@@ -160,12 +150,15 @@ export default function BoardsPage() {
       </Card>
 
       {/* 拒绝对话框 */}
-      <AlertDialog open={!!rejectTarget} onOpenChange={(open) => {
-        if (!open) {
-          setRejectTarget(null);
-          setRejectReason('');
-        }
-      }}>
+      <AlertDialog
+        open={!!rejectTarget}
+        onOpenChange={(open) => {
+          if (!open) {
+            setRejectTarget(null);
+            setRejectReason('');
+          }
+        }}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>拒绝申请</AlertDialogTitle>

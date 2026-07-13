@@ -71,7 +71,12 @@ export function AdminTopbar({ user, title, onLogout }: TopbarProps) {
       {/* 搜索 — 占位提示用户在对应页面使用页内筛选 */}
       <div className="relative ml-auto hidden w-64 max-w-md md:block">
         <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-        <Input type="search" placeholder="在各页面使用页内筛选搜索…" className="h-9 pl-8" disabled />
+        <Input
+          type="search"
+          placeholder="在各页面使用页内筛选搜索…"
+          className="h-9 pl-8"
+          disabled
+        />
       </div>
 
       <div className="ml-auto flex items-center gap-1 md:ml-0">

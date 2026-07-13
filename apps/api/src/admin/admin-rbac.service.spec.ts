@@ -33,7 +33,10 @@ describe('AdminService role isolation', () => {
     ['global statistics', (service: AdminService) => service.getStats(ordinaryAdmin)],
     ['global post list', (service: AdminService) => service.listPosts({}, ordinaryAdmin)],
     ['global comment list', (service: AdminService) => service.listComments({}, ordinaryAdmin)],
-    ['moderation case list', (service: AdminService) => service.listModerationCases({}, ordinaryAdmin)],
+    [
+      'moderation case list',
+      (service: AdminService) => service.listModerationCases({}, ordinaryAdmin),
+    ],
     [
       'anonymous post identity',
       (service: AdminService) => service.revealPostAuthor('9', ordinaryAdmin, '127.0.0.1'),
@@ -140,9 +143,11 @@ describe('AdminService role isolation', () => {
       auditLog: { create: jest.fn().mockRejectedValue(auditFailure) },
     };
 
-    await expect(serviceWith(prisma).listUsers({}, superadmin, '127.0.0.1')).resolves.toMatchObject({
-      total: 1,
-    });
+    await expect(serviceWith(prisma).listUsers({}, superadmin, '127.0.0.1')).resolves.toMatchObject(
+      {
+        total: 1,
+      },
+    );
     expect(prisma.auditLog.create).not.toHaveBeenCalled();
   });
 
@@ -155,7 +160,9 @@ describe('AdminService role isolation', () => {
       post: {
         findUniqueOrThrow: jest.fn().mockImplementation(async () => {
           events.push('author');
-          return { author: { id: 42n, username: 'private-user', email: 'private@pop.zjgsu.edu.cn' } };
+          return {
+            author: { id: 42n, username: 'private-user', email: 'private@pop.zjgsu.edu.cn' },
+          };
         }),
       },
       registrationRequest: {

@@ -27,7 +27,13 @@ import type {
   ChatroomDetail,
   ChatroomMessageDto,
   MySanction,
+  FoodCanteen,
+  FoodMerchant,
+  FoodPost,
+  FoodReview,
+  FoodReviewsPage,
 } from '@/types/api';
+import { ApiError, requestJson } from '@forum/api-client';
 
 const USE_MOCK = process.env.NEXT_PUBLIC_USE_MOCK === 'true';
 const CONFIGURED_API_BASE =
@@ -49,39 +55,16 @@ const MOCK_NOTIFICATIONS: NotificationItem[] = [
 const MOCK_COMMENTS_BY_POST = new Map<string, Comment[]>();
 MOCK_COMMENTS_BY_POST.set('102', MOCK_COMMENTS_FOR_POST_102);
 
-class ApiError extends Error {
-  constructor(
-    message: string,
-    public readonly status: number,
-    public readonly code: string,
-  ) {
-    super(message);
-  }
-}
-
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const serverCookieHeader = await getServerCookieHeader();
-  const res = await fetch(`${apiBase()}/api/v1${path}`, {
-    credentials: 'include',
-    headers: {
-      'Content-Type': 'application/json',
-      ...(serverCookieHeader ? { Cookie: serverCookieHeader } : {}),
-      ...(init?.headers ?? {}),
-    },
-    ...init,
-  });
-  if (!res.ok) {
-    let code = 'UNKNOWN';
-    let message = res.statusText;
-    try {
-      const body = (await res.json()) as { code?: string; message?: string };
-      code = body.code ?? code;
-      message = body.message ?? message;
-    } catch {}
-    throw new ApiError(message, res.status, code);
+  const headers = new Headers(init?.headers);
+  if (serverCookieHeader && !headers.has('Cookie')) {
+    headers.set('Cookie', serverCookieHeader);
   }
-  const text = await res.text();
-  return (text ? JSON.parse(text) : {}) as T;
+  return requestJson<T>(`${apiBase()}/api/v1${path}`, {
+    ...init,
+    headers,
+  });
 }
 
 function apiBase(): string {
@@ -200,10 +183,8 @@ export async function listPosts(opts: {
       );
     }
     const sorted = sortPosts(posts, opts.sort ?? 'hot');
-    const pageSize = Math.min(Math.max(opts.limit ?? 20, 1), 20);
-    const cursorIndex = opts.cursor
-      ? sorted.findIndex((post) => post.id === opts.cursor)
-      : -1;
+    const pageSize = Math.min(Math.max(opts.limit ?? 20, 1), 30);
+    const cursorIndex = opts.cursor ? sorted.findIndex((post) => post.id === opts.cursor) : -1;
     const start = cursorIndex >= 0 ? cursorIndex + 1 : 0;
     const items = sorted.slice(start, start + pageSize);
     const hasMore = start + items.length < sorted.length;
@@ -218,14 +199,7 @@ export async function listPosts(opts: {
   if (opts.q) params.set('q', opts.q);
   if (opts.limit) params.set('limit', String(opts.limit));
   const base = opts.tag ? `/boards/${opts.tag}/posts` : '/posts';
-  try {
-    return await request(`${base}?${params.toString()}`);
-  } catch (err) {
-    if (err instanceof ApiError && err.status === 401) {
-      return { items: [] };
-    }
-    throw err;
-  }
+  return request(`${base}?${params.toString()}`);
 }
 
 export async function createPost(data: {
@@ -370,14 +344,24 @@ export async function toggleBookmark(postId: string): Promise<{ bookmarked: bool
 export async function getPost(id: string): Promise<Post | undefined> {
   if (USE_MOCK)
     return Promise.resolve(applyAdminMockPostStates([...MOCK_POSTS]).find((p) => p.id === id));
-  return request(`/posts/${id}`);
+  try {
+    return await request(`/posts/${id}`);
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 404) {
+      return undefined;
+    }
+    throw error;
+  }
 }
 
 // ============================================================
 // Comments
 // ============================================================
 
-export async function listComments(postId: string, opts?: { cursor?: string }): Promise<Page<Comment>> {
+export async function listComments(
+  postId: string,
+  opts?: { cursor?: string },
+): Promise<Page<Comment>> {
   if (USE_MOCK) {
     const comments = MOCK_COMMENTS_BY_POST.get(postId) ?? [];
     return Promise.resolve({ items: comments });
@@ -460,13 +444,7 @@ export async function voteComment(commentId: string, value: 1 | -1 | 0): Promise
 }
 
 export async function reportTarget(data: {
-  targetType:
-    | 'post'
-    | 'comment'
-    | 'user'
-    | 'conversation'
-    | 'direct_message'
-    | 'chatroom_message';
+  targetType: 'post' | 'comment' | 'user' | 'conversation' | 'direct_message' | 'chatroom_message';
   targetId: string;
   category: 'illegal' | 'porn' | 'ad' | 'harassment' | 'other';
   reason?: string;
@@ -505,6 +483,129 @@ export async function getCurrentUser(): Promise<CurrentUser | null> {
   }
 }
 
+// ============================================================
+// 美食模块
+// ============================================================
+
+const MOCK_FOOD_CANTEENS: FoodCanteen[] = [
+  {
+    id: 'food-canteen-1',
+    slug: 'xingyun',
+    name: '行云苑',
+    description: '行云苑二楼美食窗口',
+    windows: [],
+  },
+  {
+    id: 'food-canteen-2',
+    slug: 'liushui',
+    name: '流水苑',
+    description: '流水苑二楼美食窗口',
+    windows: [],
+  },
+];
+
+const MOCK_FOOD_POSTS: FoodPost[] = [
+  {
+    id: 'food-post-demo',
+    type: 'new_product',
+    title: '美食模块已上线',
+    contentMd: '欢迎大家分享食堂窗口的真实体验。',
+    contentHtml: '<p>欢迎大家分享食堂窗口的真实体验。</p>',
+    status: 'published',
+    coverUrl: null,
+    publishAt: new Date().toISOString(),
+    expiresAt: null,
+    isPinned: true,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    merchant: { id: 'demo-merchant', slug: 'demo', name: '美食模块公告', logoUrl: null },
+    window: null,
+  },
+];
+
+export async function listFoodCanteens(): Promise<FoodCanteen[]> {
+  if (USE_MOCK) return MOCK_FOOD_CANTEENS;
+  return request('/food/canteens');
+}
+
+export async function getFoodCanteen(slug: string): Promise<FoodCanteen> {
+  if (USE_MOCK) {
+    const canteen = MOCK_FOOD_CANTEENS.find((item) => item.slug === slug);
+    if (!canteen) throw new Error('食堂不存在');
+    return canteen;
+  }
+  return request(`/food/canteens/${encodeURIComponent(slug)}`);
+}
+
+export async function listFoodMerchants(canteen?: string): Promise<FoodMerchant[]> {
+  if (USE_MOCK) return [];
+  const query = canteen ? `?canteen=${encodeURIComponent(canteen)}` : '';
+  return request(`/food/merchants${query}`);
+}
+
+export async function getFoodMerchant(slug: string): Promise<FoodMerchant> {
+  if (USE_MOCK) throw new Error('商家不存在');
+  return request(`/food/merchants/${encodeURIComponent(slug)}`);
+}
+
+export async function listFoodFeed(
+  opts: {
+    canteen?: string;
+    merchant?: string;
+    cursor?: string;
+    limit?: number;
+  } = {},
+): Promise<{ items: FoodPost[]; nextCursor?: string }> {
+  if (USE_MOCK) return { items: MOCK_FOOD_POSTS };
+  const params = new URLSearchParams();
+  if (opts.canteen) params.set('canteen', opts.canteen);
+  if (opts.merchant) params.set('merchant', opts.merchant);
+  if (opts.cursor) params.set('cursor', opts.cursor);
+  if (opts.limit) params.set('limit', String(opts.limit));
+  const query = params.toString();
+  return request(`/food/feed${query ? `?${query}` : ''}`);
+}
+
+export async function getFoodPost(id: string): Promise<FoodPost> {
+  if (USE_MOCK) {
+    const post = MOCK_FOOD_POSTS.find((item) => item.id === id);
+    if (!post) throw new Error('美食内容不存在');
+    return post;
+  }
+  return request(`/food/posts/${encodeURIComponent(id)}`);
+}
+
+export async function listFoodReviews(
+  windowId: string,
+  opts: { cursor?: string; limit?: number } = {},
+): Promise<FoodReviewsPage> {
+  if (USE_MOCK) return { averageTasteScore: null, reviewCount: 0, items: [] };
+  const params = new URLSearchParams();
+  if (opts.cursor) params.set('cursor', opts.cursor);
+  if (opts.limit) params.set('limit', String(opts.limit));
+  const query = params.toString();
+  return request(
+    `/food/windows/${encodeURIComponent(windowId)}/reviews${query ? `?${query}` : ''}`,
+  );
+}
+
+export async function createFoodReview(
+  windowId: string,
+  data: {
+    type: 'taste_review' | 'suggestion';
+    tasteScore?: number;
+    contentMd: string;
+    isAnonymous?: boolean;
+    rulesAcknowledged: boolean;
+  },
+): Promise<FoodReview> {
+  if (USE_MOCK) throw new Error('演示模式暂不支持提交美食评价');
+  return request(`/food/windows/${encodeURIComponent(windowId)}/reviews`, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
 export async function acknowledgeCommunityRules(
   version: string,
   source: 'new_user_daily' | 'publish' | 'private_message' | 'rules_update',
@@ -526,7 +627,9 @@ export async function acknowledgeCommunityRules(
 // 私信
 // ============================================================
 
-export async function listConversations(opts?: { cursor?: string }): Promise<{ items: Conversation[]; nextCursor?: string }> {
+export async function listConversations(opts?: {
+  cursor?: string;
+}): Promise<{ items: Conversation[]; nextCursor?: string }> {
   if (USE_MOCK) {
     const sorted = [...MOCK_CONVERSATIONS].sort(
       (a, b) => +new Date(b.lastMessageAt) - +new Date(a.lastMessageAt),
@@ -604,7 +707,9 @@ export async function setDmAllowed(allowed: boolean): Promise<{ ok: true }> {
 // Notifications
 // ============================================================
 
-export async function listNotifications(opts?: { cursor?: string }): Promise<NotificationsPage & { nextCursor?: string }> {
+export async function listNotifications(opts?: {
+  cursor?: string;
+}): Promise<NotificationsPage & { nextCursor?: string }> {
   if (USE_MOCK) {
     return {
       items: MOCK_NOTIFICATIONS,
@@ -755,6 +860,25 @@ export async function verifyEmailCode(
   });
 }
 
+export async function resendEmailCode(
+  studentId: string,
+): Promise<{ ok: true; expiresAt?: string }> {
+  if (USE_MOCK) {
+    await new Promise((r) => setTimeout(r, 400));
+    const existing = MOCK_REGISTRATIONS_MAP.get(studentId);
+    if (!existing || existing.method !== 'email' || existing.status !== 'pending') {
+      throw new Error('未找到可重新发送验证码的邮箱注册记录');
+    }
+    (existing as RegistrationRequest & { verificationCode?: string }).verificationCode = '123456';
+    existing.expiresAt = new Date(Date.now() + 24 * 3600 * 1000).toISOString();
+    return { ok: true, expiresAt: existing.expiresAt };
+  }
+  return request('/auth/resend-email-code', {
+    method: 'POST',
+    body: JSON.stringify({ studentId }),
+  });
+}
+
 export async function checkRegistration(
   studentId: string,
   password: string,
@@ -818,7 +942,11 @@ export async function submitAppeal(
   if (USE_MOCK) {
     return {
       ok: true,
-      appeal: { id: `mock-appeal-${Date.now()}`, status: 'pending', createdAt: new Date().toISOString() },
+      appeal: {
+        id: `mock-appeal-${Date.now()}`,
+        status: 'pending',
+        createdAt: new Date().toISOString(),
+      },
     };
   }
   return request('/appeals', {
@@ -911,14 +1039,94 @@ export async function sendChatroomMessage(
 export async function listBoards(): Promise<Board[]> {
   if (USE_MOCK) {
     return Promise.resolve([
-      { id: '1', slug: 'zheng-neng-liang', name: '正能量', icon: '🏫', color: 'blue', description: '校内新鲜事、活动公告、正能量分享', allowsAnonymous: true, postCount: 80, subscriberCount: 1200 },
-      { id: '2', slug: 'campus', name: '校园生活', icon: '📚', color: 'green', description: '校园日常、学习生活、趣事分享', allowsAnonymous: true, postCount: 128, subscriberCount: 567 },
-      { id: '3', slug: 'course', name: '选课交流', icon: '💬', color: 'teal', description: '选课推荐、课程评价、学习经验', allowsAnonymous: true, postCount: 89, subscriberCount: 423 },
-      { id: '4', slug: 'trade', name: '二手交易', icon: '🛒', color: 'amber', description: '闲置物品买卖、求购信息', allowsAnonymous: false, postCount: 256, subscriberCount: 890 },
-      { id: '5', slug: 'job', name: '实习就业', icon: '💼', color: 'purple', description: '实习招聘、求职经验、内推信息', allowsAnonymous: false, postCount: 67, subscriberCount: 345 },
-      { id: '6', slug: 'emotion', name: '情感天地', icon: '❤️', color: 'pink', description: '倾诉、树洞、情感话题', allowsAnonymous: true, postCount: 178, subscriberCount: 678 },
-      { id: '7', slug: 'exam', name: '考研考公', icon: '📖', color: 'indigo', description: '考研/考公/考证经验交流', allowsAnonymous: true, postCount: 92, subscriberCount: 456 },
-      { id: '8', slug: 'feedback', name: '站务反馈', icon: '📝', color: 'gray', description: '建议、BUG 反馈、投诉', allowsAnonymous: false, postCount: 34, subscriberCount: 123 },
+      {
+        id: '1',
+        slug: 'zheng-neng-liang',
+        name: '正能量',
+        icon: '🏫',
+        color: 'blue',
+        description: '校内新鲜事、活动公告、正能量分享',
+        allowsAnonymous: true,
+        postCount: 80,
+        subscriberCount: 1200,
+      },
+      {
+        id: '2',
+        slug: 'campus',
+        name: '校园生活',
+        icon: '📚',
+        color: 'green',
+        description: '校园日常、学习生活、趣事分享',
+        allowsAnonymous: true,
+        postCount: 128,
+        subscriberCount: 567,
+      },
+      {
+        id: '3',
+        slug: 'course',
+        name: '选课交流',
+        icon: '💬',
+        color: 'teal',
+        description: '选课推荐、课程评价、学习经验',
+        allowsAnonymous: true,
+        postCount: 89,
+        subscriberCount: 423,
+      },
+      {
+        id: '4',
+        slug: 'trade',
+        name: '二手交易',
+        icon: '🛒',
+        color: 'amber',
+        description: '闲置物品买卖、求购信息',
+        allowsAnonymous: false,
+        postCount: 256,
+        subscriberCount: 890,
+      },
+      {
+        id: '5',
+        slug: 'job',
+        name: '实习就业',
+        icon: '💼',
+        color: 'purple',
+        description: '实习招聘、求职经验、内推信息',
+        allowsAnonymous: false,
+        postCount: 67,
+        subscriberCount: 345,
+      },
+      {
+        id: '6',
+        slug: 'emotion',
+        name: '情感天地',
+        icon: '❤️',
+        color: 'pink',
+        description: '倾诉、树洞、情感话题',
+        allowsAnonymous: true,
+        postCount: 178,
+        subscriberCount: 678,
+      },
+      {
+        id: '7',
+        slug: 'exam',
+        name: '考研考公',
+        icon: '📖',
+        color: 'indigo',
+        description: '考研/考公/考证经验交流',
+        allowsAnonymous: true,
+        postCount: 92,
+        subscriberCount: 456,
+      },
+      {
+        id: '8',
+        slug: 'feedback',
+        name: '站务反馈',
+        icon: '📝',
+        color: 'gray',
+        description: '建议、BUG 反馈、投诉',
+        allowsAnonymous: false,
+        postCount: 34,
+        subscriberCount: 123,
+      },
     ]);
   }
   return request('/boards');

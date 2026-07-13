@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { ArrowRight, Plus, ShieldCheck, Sparkles } from 'lucide-react';
+import { ArrowRight, Plus, ShieldCheck } from 'lucide-react';
 import { PostCard } from '@/components/post-card';
 import { BoardGrid } from '@/components/board-grid';
 import { Button } from '@/components/ui/button';
@@ -16,73 +16,136 @@ export default async function HomePage() {
   const hour = new Date().getHours();
 
   return (
-    <div className="space-y-8 pb-6">
+    <div className="space-y-11 pb-10 [&_svg]:stroke-[1.8]">
       <section
         aria-labelledby="home-hero-title"
-        className="relative isolate overflow-hidden rounded-[1.5rem] border border-primary/15 bg-card px-5 py-6 shadow-card sm:px-7 sm:py-8"
+        className="relative isolate overflow-hidden rounded-[1.25rem] border border-[color:var(--hero-border)]/70 bg-[var(--hero-background)] px-6 py-7 text-white shadow-sm sm:px-9 sm:py-9"
       >
-        <div aria-hidden className="absolute -right-16 -top-24 -z-10 size-72 rounded-full bg-primary/12 blur-3xl" />
-        <div aria-hidden className="absolute -bottom-32 left-1/4 -z-10 size-64 rounded-full bg-orange-300/10 blur-3xl" />
-        <div className="flex flex-col gap-6 sm:flex-row sm:items-end sm:justify-between">
-          <div className="max-w-2xl space-y-3">
-            <div className="flex flex-wrap items-center gap-2 text-sm">
-              <span className="font-semibold text-primary">{greeting}，{user ? user.username : '浙小商'}</span>
-              <span className="inline-flex items-center gap-1 rounded-full border border-primary/15 bg-primary/[0.08] px-2.5 py-1 text-[11px] font-medium text-primary">
-                <ShieldCheck className="size-3" /> 校园身份认证
-              </span>
+        <div
+          aria-hidden
+          className="absolute -right-20 -top-28 -z-10 size-80 rounded-full bg-[color:var(--hero-decoration)]/20 blur-3xl"
+        />
+        <div
+          aria-hidden
+          className="absolute -bottom-36 left-1/3 -z-10 size-72 rounded-full bg-[color:var(--hero-accent)]/10 blur-3xl"
+        />
+        <div className="relative flex flex-col gap-9 lg:flex-row lg:items-end lg:justify-between">
+          <div className="max-w-2xl">
+            <div className="flex flex-wrap items-center gap-2 text-[11px] font-semibold tracking-[0.16em] text-white/65">
+              <span className="size-1.5 rounded-full bg-[var(--hero-accent)]" aria-hidden />
+              <span>浙工商树洞 / CAMPUS COMMUNITY</span>
             </div>
-            <h1 id="home-hero-title" className="text-pretty text-3xl font-bold tracking-[-0.035em] sm:text-4xl">
+            <p className="mt-6 text-sm font-medium text-white/70">
+              {greeting}，{user ? user.username : '浙小商'}
+            </p>
+            <h1
+              id="home-hero-title"
+              className="mt-2 max-w-xl text-pretty text-[clamp(2rem,5vw,3.25rem)] font-bold leading-[1.14] tracking-[-0.055em]"
+            >
               今天，校园里有什么新鲜事？
             </h1>
-            <p className="text-sm font-medium text-foreground/75">{timeOfDayHint(hour)}</p>
-            <p className="max-w-xl text-pretty text-sm leading-6 text-muted-foreground sm:text-base">
-              匿名表达、真实讨论。所有公开身份都是“浙小商”，你只需要关注内容本身。
+            <p className="mt-4 text-sm font-medium text-white/75">{timeOfDayHint(hour)}</p>
+            <p className="mt-2 max-w-xl text-pretty text-sm leading-6 text-white/60 sm:text-[15px]">
+              匿名表达，真实讨论。这里关注内容本身，也欢迎每一条认真、友善的分享。
             </p>
+            <div className="mt-7 flex flex-wrap items-center gap-3">
+              <Button
+                asChild
+                size="lg"
+                className="rounded-lg bg-[var(--hero-accent)] text-[var(--hero-background)] shadow-none hover:brightness-105"
+              >
+                <Link href="/submit">
+                  <Plus className="size-4" /> 发布新话题
+                </Link>
+              </Button>
+              <Link
+                href="/explore"
+                className="inline-flex h-11 items-center gap-1.5 rounded-lg px-3 text-sm font-semibold text-white/75 transition-colors hover:bg-white/10 hover:text-white"
+              >
+                浏览全部帖子 <ArrowRight className="size-4" />
+              </Link>
+            </div>
           </div>
-          <Button asChild size="lg" className="w-full rounded-xl sm:w-auto">
-            <Link href="/submit"><Plus className="size-4" /> 发布新话题</Link>
-          </Button>
+
+          <div className="hidden w-48 shrink-0 border-l border-white/15 pl-6 lg:block">
+            <p className="text-[10px] font-semibold tracking-[0.18em] text-white/50">
+              A QUIET PLACE
+            </p>
+            <p className="mt-4 text-2xl font-semibold leading-tight tracking-[-0.04em]">
+              关注内容，
+              <br />
+              不追逐身份。
+            </p>
+            <div className="mt-7 flex items-center gap-2 text-xs text-white/55">
+              <ShieldCheck className="size-3.5 text-[var(--hero-accent)]" />
+              校园身份认证
+            </div>
+          </div>
         </div>
       </section>
 
-      <section aria-labelledby="channels-heading" className="space-y-4 rounded-2xl border border-border/70 bg-card/60 p-4 sm:p-5">
-        <div>
-          <h2 id="channels-heading" className="text-lg font-semibold tracking-tight">按主题逛逛</h2>
-          <p className="mt-1 text-xs text-muted-foreground">从频道进入感兴趣的校园话题</p>
+      <section aria-labelledby="channels-heading" className="space-y-5">
+        <div className="flex items-end justify-between gap-4">
+          <div>
+            <p className="text-[10px] font-semibold tracking-[0.18em] text-primary/80">
+              01 / EXPLORE
+            </p>
+            <h2 id="channels-heading" className="mt-2 text-2xl font-semibold tracking-[-0.035em]">
+              从校园开始
+            </h2>
+            <p className="mt-1.5 text-sm text-muted-foreground">从主题进入你真正关心的校园话题</p>
+          </div>
+          <Link
+            href="/explore"
+            className="hidden items-center gap-1 text-sm font-semibold text-muted-foreground transition-colors hover:text-primary sm:inline-flex"
+          >
+            发现更多 <ArrowRight className="size-4" />
+          </Link>
         </div>
         <BoardGrid boards={boards} />
       </section>
 
-      <section aria-labelledby="featured-heading" className="space-y-4">
-        <div className="flex items-end justify-between gap-4">
-          <div>
-            <div className="flex items-center gap-2">
-              <Sparkles className="size-5 text-primary" />
-              <h2 id="featured-heading" className="text-xl font-bold tracking-tight">全站精选</h2>
+      <section aria-labelledby="featured-heading" className="space-y-5">
+        <div className="flex items-end justify-between gap-4 border-b border-border/80 pb-4">
+          <div className="flex items-start gap-3">
+            <span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-md bg-primary text-[10px] font-bold text-primary-foreground">
+              02
+            </span>
+            <div>
+              <p className="text-[10px] font-semibold tracking-[0.18em] text-primary/80">
+                THE FEED
+              </p>
+              <h2 id="featured-heading" className="mt-2 text-2xl font-semibold tracking-[-0.035em]">
+                正在发生
+              </h2>
+              <p className="mt-1.5 text-sm text-muted-foreground">首页精选值得关注的新鲜讨论</p>
             </div>
-            <p className="mt-1 text-sm text-muted-foreground">首页只展示部分值得关注的新鲜讨论</p>
           </div>
-          <Button asChild variant="ghost" size="sm" className="hidden gap-1 sm:inline-flex">
-            <Link href="/explore">全部帖子 <ArrowRight className="size-4" /></Link>
-          </Button>
+          <Link
+            href="/explore"
+            className="hidden items-center gap-1 text-sm font-semibold text-muted-foreground transition-colors hover:text-primary sm:inline-flex"
+          >
+            全部帖子 <ArrowRight className="size-4" />
+          </Link>
         </div>
 
         {page.items.length > 0 ? (
           <div className="space-y-3">
             {page.items.map((post) => (
-              <PostCard key={post.id} post={post} currentUserRole={user?.role} isLoggedIn={Boolean(user)} />
+              <PostCard
+                key={post.id}
+                post={post}
+                currentUserRole={user?.role}
+                isLoggedIn={Boolean(user)}
+              />
             ))}
           </div>
         ) : (
-          <div className="rounded-2xl border border-dashed bg-card px-5 py-14 text-center text-sm text-muted-foreground">
+          <div className="rounded-xl border border-dashed bg-card px-5 py-14 text-center text-sm text-muted-foreground">
             暂时还没有帖子，来发布今天的第一条话题吧。
           </div>
         )}
       </section>
-
-      <Button asChild size="lg" variant="outline" className="h-12 w-full rounded-xl text-sm font-semibold">
-        <Link href="/explore">查看更多全站帖子 <ArrowRight className="size-4" /></Link>
-      </Button>
     </div>
   );
 }

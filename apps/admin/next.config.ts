@@ -6,6 +6,8 @@ if (process.env.NODE_ENV === 'production' && process.env.NEXT_PUBLIC_USE_MOCK ==
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
+  // CI executes the stricter ESLint CLI gate separately; avoid duplicate build-time linting.
+  eslint: { ignoreDuringBuilds: true },
   async rewrites() {
     return [
       {

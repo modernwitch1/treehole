@@ -1,6 +1,7 @@
 'use client';
 
 import * as React from 'react';
+import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Image as ImageIcon, AtSign, Bold, Italic, Link as LinkIcon, Quote } from 'lucide-react';
@@ -116,48 +117,57 @@ export function CommentComposer({
                 onChange={(event) => setRulesAcknowledged(event.target.checked)}
                 className="mt-0.5"
               />
-              <span>我确认本条评论遵守社区规则，不攻击造谣、不泄露隐私。</span>
+              <span>
+                我确认本条评论遵守
+                <Link
+                  href="/rules"
+                  className="mx-1 font-medium text-foreground underline underline-offset-4"
+                >
+                  社区规则
+                </Link>
+                ，不攻击造谣、不泄露隐私，并对内容负责。
+              </span>
             </label>
             <div className="flex items-center gap-1">
-            <ToolbarButton aria-label="加粗" onClick={() => wrap('**')}>
-              <Bold className="size-4" />
-            </ToolbarButton>
-            <ToolbarButton aria-label="斜体" onClick={() => wrap('*')}>
-              <Italic className="size-4" />
-            </ToolbarButton>
-            <ToolbarButton aria-label="链接" onClick={() => wrap('[', '](https://)')}>
-              <LinkIcon className="size-4" />
-            </ToolbarButton>
-            <ToolbarButton aria-label="引用" onClick={() => setContent((v) => `${v}\n> `)}>
-              <Quote className="size-4" />
-            </ToolbarButton>
-            <ToolbarButton aria-label="图片" onClick={() => wrap('![图片描述](', ')')}>
-              <ImageIcon className="size-4" />
-            </ToolbarButton>
-            <ToolbarButton aria-label="提及" onClick={() => setContent((v) => `${v}@`)}>
-              <AtSign className="size-4" />
-            </ToolbarButton>
+              <ToolbarButton aria-label="加粗" onClick={() => wrap('**')}>
+                <Bold className="size-4" />
+              </ToolbarButton>
+              <ToolbarButton aria-label="斜体" onClick={() => wrap('*')}>
+                <Italic className="size-4" />
+              </ToolbarButton>
+              <ToolbarButton aria-label="链接" onClick={() => wrap('[', '](https://)')}>
+                <LinkIcon className="size-4" />
+              </ToolbarButton>
+              <ToolbarButton aria-label="引用" onClick={() => setContent((v) => `${v}\n> `)}>
+                <Quote className="size-4" />
+              </ToolbarButton>
+              <ToolbarButton aria-label="图片" onClick={() => wrap('![图片描述](', ')')}>
+                <ImageIcon className="size-4" />
+              </ToolbarButton>
+              <ToolbarButton aria-label="提及" onClick={() => setContent((v) => `${v}@`)}>
+                <AtSign className="size-4" />
+              </ToolbarButton>
 
-            <div className="ml-auto flex gap-2">
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => {
-                  setContent('');
-                  onCancel?.();
-                }}
-                disabled={!content && !parentId}
-              >
-                取消
-              </Button>
-              <Button
-                size="sm"
-                disabled={!content.trim() || !rulesAcknowledged || submitting}
-                onClick={() => void submit()}
-              >
-                {submitting ? '发布中…' : '发布'}
-              </Button>
-            </div>
+              <div className="ml-auto flex gap-2">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    setContent('');
+                    onCancel?.();
+                  }}
+                  disabled={!content && !parentId}
+                >
+                  取消
+                </Button>
+                <Button
+                  size="sm"
+                  disabled={!content.trim() || !rulesAcknowledged || submitting}
+                  onClick={() => void submit()}
+                >
+                  {submitting ? '发布中…' : '发布'}
+                </Button>
+              </div>
             </div>
           </div>
         )}

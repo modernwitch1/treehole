@@ -6,7 +6,6 @@
 services:
   postgres:
     image: postgres:16-alpine
-    container_name: forum-postgres
     restart: unless-stopped
     environment:
       POSTGRES_DB: forum
@@ -14,7 +13,7 @@ services:
       POSTGRES_PASSWORD: forum_dev_password
       POSTGRES_INITDB_ARGS: '--encoding=UTF-8 --lc-collate=C --lc-ctype=C'
     ports:
-      - '5432:5432'
+      - '127.0.0.1:5432:5432'
     volumes:
       - postgres-data:/var/lib/postgresql/data
     healthcheck:
@@ -25,11 +24,10 @@ services:
 
   redis:
     image: redis:7-alpine
-    container_name: forum-redis
     restart: unless-stopped
     command: ['redis-server', '--appendonly', 'yes']
     ports:
-      - '6379:6379'
+      - '127.0.0.1:6379:6379'
     volumes:
       - redis-data:/data
     healthcheck:
@@ -39,24 +37,22 @@ services:
       retries: 10
 
   minio:
-    image: minio/minio:latest
-    container_name: forum-minio
+    image: minio/minio@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e
     restart: unless-stopped
     command: ['server', '/data', '--console-address', ':9001']
     environment:
       MINIO_ROOT_USER: local-dev-key
       MINIO_ROOT_PASSWORD: local-dev-secret
     ports:
-      - '9000:9000' # S3 API
-      - '9001:9001' # Console
+      - '127.0.0.1:9000:9000' # S3 API
+      - '127.0.0.1:9001:9001' # Console
     volumes:
       - minio-data:/data
     # NOTE: minio 镜像里没有 mc/curl/wget，无法做内置应用层 healthcheck。
     # minio-init 自己 retry 等待 (见下)。
 
   minio-init:
-    image: minio/mc:latest
-    container_name: forum-minio-init
+    image: minio/mc@sha256:a7fe349ef4bd8521fb8497f55c6042871b2ae640607cf99d9bede5e9bdf11727
     depends_on:
       minio:
         condition: service_started
@@ -67,21 +63,22 @@ services:
         done;
         mc mb --ignore-existing local/zjgsu-forum-uploads;
         mc mb --ignore-existing local/zjgsu-forum-avatars;
-        mc anonymous set download local/zjgsu-forum-uploads;
-        mc anonymous set download local/zjgsu-forum-avatars;
-        echo '✅ MinIO buckets ready.';
+        # Objects are always private.  The API is the only component allowed to
+        # decide whether an uploaded image has passed review and may be read.
+        mc anonymous set none local/zjgsu-forum-uploads;
+        mc anonymous set none local/zjgsu-forum-avatars;
+        echo '✅ Private MinIO buckets ready.';
       "
 
   maildev:
-    image: maildev/maildev:latest
-    container_name: forum-maildev
+    image: maildev/maildev@sha256:180ef51f65eefebb0e7122d8308813c1fd7bff164bc440ce5a3c2feee167a810
     restart: unless-stopped
     environment:
       MAILDEV_INCOMING_USER: ''
       MAILDEV_INCOMING_PASS: ''
     ports:
-      - '1025:1025' # SMTP
-      - '1080:1080' # Web UI: http://localhost:1080
+      - '127.0.0.1:1025:1025' # SMTP
+      - '127.0.0.1:1080:1080' # Web UI: http://localhost:1080
 
 volumes:
   postgres-data:

@@ -62,7 +62,8 @@ function SubmitReviewForm() {
     if (!course || !content.trim()) return;
     setSubmitting(true);
     try {
-      const tagLine = selectedTags.length > 0 ? selectedTags.map((tag) => `#${tag}`).join(' ') : '暂无';
+      const tagLine =
+        selectedTags.length > 0 ? selectedTags.map((tag) => `#${tag}`).join(' ') : '暂无';
       const courseInfo = [course.courseCode, course.teacher, course.department]
         .filter(Boolean)
         .join(' · ');
@@ -247,7 +248,13 @@ function SubmitReviewForm() {
             onChange={(event) => setRulesAcknowledged(event.target.checked)}
             className="mt-0.5"
           />
-          <span>我确认评价基于真实体验，不造谣攻击、不泄露个人隐私，并遵守社区规则。</span>
+          <span>
+            我确认评价基于真实体验，不造谣攻击、不泄露个人隐私，并遵守
+            <Link href="/rules" className="mx-1 font-medium underline underline-offset-4">
+              社区规则
+            </Link>
+            。
+          </span>
         </label>
 
         <Separator />

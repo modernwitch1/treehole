@@ -92,7 +92,8 @@ export default async function MessagesInboxPage() {
 
                     {c.origin && (
                       <p className="mt-0.5 truncate text-xs text-muted-foreground">
-                        来源帖子: <span className="font-medium text-foreground/80">{c.origin.postTitle}</span>{' '}
+                        来源帖子:{' '}
+                        <span className="font-medium text-foreground/80">{c.origin.postTitle}</span>{' '}
                         <span>· {c.origin.tag ?? '主题频道'}</span>
                       </p>
                     )}

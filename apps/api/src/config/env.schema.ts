@@ -7,6 +7,7 @@ export const envValidationSchema = Joi.object({
   APP_HOST: Joi.string().default('0.0.0.0'),
   APP_BASE_URL: Joi.string().uri().required(),
   FRONTEND_ORIGIN: Joi.string().uri().required(),
+  MERCHANT_ORIGIN: Joi.string().uri().default('https://merchant.unidating.top'),
   ADMIN_ORIGIN: Joi.string().uri().optional().allow(''),
   ALLOWED_EMAIL_DOMAIN: Joi.string()
     .pattern(/^[a-z0-9.-]+\.[a-z]{2,}$/i)
@@ -49,8 +50,21 @@ export const envValidationSchema = Joi.object({
   CDN_BASE_URL: Joi.string().uri().required(),
 
   // Email
-  MAIL_DRIVER: Joi.string().valid('smtp', 'ses', 'resend').default('smtp'),
+  MAIL_DRIVER: Joi.string()
+    .valid('smtp', 'ses', 'resend', 'brevo', 'mailjet', 'smtp2go', 'mailgun')
+    .default('smtp'),
+  // Comma-separated order. Failover only happens for network/5xx failures;
+  // quota, authentication and sender-validation errors never fall through.
+  MAIL_PROVIDER_ORDER: Joi.string()
+    .pattern(/^[a-z0-9]+(?:,[a-z0-9]+)*$/i)
+    .optional()
+    .allow(''),
+  MAIL_FAILOVER_ON_TRANSIENT: Joi.boolean().truthy('true').falsy('false').default(true),
+  MAIL_PROVIDER_TIMEOUT_MS: Joi.number().integer().min(1000).max(30000).default(8000),
+  MAIL_PROVIDER_FAILURE_THRESHOLD: Joi.number().integer().min(1).max(10).default(3),
+  MAIL_PROVIDER_COOLDOWN_SECONDS: Joi.number().integer().min(30).max(3600).default(120),
   MAIL_FROM: Joi.string().email().required(),
+  MAIL_FROM_NAME: Joi.string().max(120).optional().allow(''),
   SMTP_HOST: Joi.string().when('MAIL_DRIVER', {
     is: 'smtp',
     then: Joi.required(),
@@ -70,6 +84,16 @@ export const envValidationSchema = Joi.object({
     then: Joi.required(),
     otherwise: Joi.optional().allow(''),
   }),
+  BREVO_API_KEY: Joi.string().optional().allow(''),
+  BREVO_API_URL: Joi.string().uri().default('https://api.brevo.com/v3/smtp/email'),
+  MAILJET_API_KEY: Joi.string().optional().allow(''),
+  MAILJET_API_SECRET: Joi.string().optional().allow(''),
+  MAILJET_API_URL: Joi.string().uri().default('https://api.mailjet.com/v3.1/send'),
+  SMTP2GO_API_KEY: Joi.string().optional().allow(''),
+  SMTP2GO_API_URL: Joi.string().uri().default('https://api.smtp2go.com/v3/email/send'),
+  MAILGUN_API_KEY: Joi.string().optional().allow(''),
+  MAILGUN_DOMAIN: Joi.string().hostname().optional().allow(''),
+  MAILGUN_API_BASE_URL: Joi.string().uri().default('https://api.mailgun.net'),
 
   // Image moderation
   IMAGE_MODERATION_ENABLED: Joi.boolean().truthy('true').falsy('false').default(false),
@@ -92,6 +116,7 @@ export interface EnvVars {
   APP_HOST: string;
   APP_BASE_URL: string;
   FRONTEND_ORIGIN: string;
+  MERCHANT_ORIGIN: string;
   ADMIN_ORIGIN?: string;
   ALLOWED_EMAIL_DOMAIN: string;
   CHATROOM_RETENTION_DAYS: number;
@@ -110,13 +135,29 @@ export interface EnvVars {
   S3_UPLOADS_BUCKET: string;
   S3_AVATARS_BUCKET: string;
   CDN_BASE_URL: string;
-  MAIL_DRIVER: 'smtp' | 'ses' | 'resend';
+  MAIL_DRIVER: 'smtp' | 'ses' | 'resend' | 'brevo' | 'mailjet' | 'smtp2go' | 'mailgun';
+  MAIL_PROVIDER_ORDER?: string;
+  MAIL_FAILOVER_ON_TRANSIENT: boolean;
+  MAIL_PROVIDER_TIMEOUT_MS: number;
+  MAIL_PROVIDER_FAILURE_THRESHOLD: number;
+  MAIL_PROVIDER_COOLDOWN_SECONDS: number;
   MAIL_FROM: string;
+  MAIL_FROM_NAME?: string;
   SMTP_HOST?: string;
   SMTP_PORT?: number;
   SMTP_USER?: string;
   SMTP_PASSWORD?: string;
   RESEND_API_KEY?: string;
+  BREVO_API_KEY?: string;
+  BREVO_API_URL: string;
+  MAILJET_API_KEY?: string;
+  MAILJET_API_SECRET?: string;
+  MAILJET_API_URL: string;
+  SMTP2GO_API_KEY?: string;
+  SMTP2GO_API_URL: string;
+  MAILGUN_API_KEY?: string;
+  MAILGUN_DOMAIN?: string;
+  MAILGUN_API_BASE_URL: string;
   IMAGE_MODERATION_ENABLED: boolean;
   SENTRY_DSN?: string;
   SENTRY_TRACES_SAMPLE_RATE: number;

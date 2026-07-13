@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next';
 import { Inter, Noto_Sans_SC } from 'next/font/google';
 import { Providers } from '@/components/providers';
+import { COLOR_THEME_STORAGE_KEY } from '@/lib/color-theme';
 import './globals.css';
 
 const inter = Inter({
@@ -27,12 +28,22 @@ export const metadata: Metadata = {
 
 export const viewport: Viewport = {
   themeColor: [
-    { media: '(prefers-color-scheme: light)', color: '#f6f8fc' },
-    { media: '(prefers-color-scheme: dark)', color: '#07111f' },
+    { media: '(prefers-color-scheme: light)', color: '#f5f4ef' },
+    { media: '(prefers-color-scheme: dark)', color: '#101917' },
   ],
   width: 'device-width',
   initialScale: 1,
 };
+
+const colorThemeBootstrapScript = `
+(function () {
+  try {
+    var palette = window.localStorage.getItem('${COLOR_THEME_STORAGE_KEY}');
+    if (palette === 'pink' || palette === 'green' || palette === 'blue' || palette === 'beige') {
+      document.documentElement.dataset.palette = palette;
+    }
+  } catch (_) {}
+})();`;
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -41,11 +52,14 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       suppressHydrationWarning
       className={`${inter.variable} ${notoSansSc.variable}`}
     >
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: colorThemeBootstrapScript }} />
+      </head>
       <body
         className="min-h-screen overflow-x-hidden bg-background font-sans antialiased"
         style={{
           fontFamily:
-            'var(--font-noto-sc), var(--font-inter), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
+            'var(--font-inter), var(--font-noto-sc), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
         }}
       >
         <Providers>{children}</Providers>

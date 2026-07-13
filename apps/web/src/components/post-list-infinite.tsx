@@ -6,13 +6,14 @@ import { PostCard } from '@/components/post-card';
 import { LoadMoreButton } from '@/components/load-more-button';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
-import { AlertCircle, RotateCcw } from 'lucide-react';
+import { AlertCircle, Layers3, RotateCcw } from 'lucide-react';
 import { listPosts } from '@/lib/api';
 import type { Post, SortType, UserRole } from '@/types/api';
 
 interface PostListInfiniteProps {
   initialPosts: Post[];
   initialNextCursor?: string;
+  limit?: number;
   sort?: SortType;
   tag?: string;
   q?: string;
@@ -24,6 +25,7 @@ interface PostListInfiniteProps {
 export function PostListInfinite({
   initialPosts,
   initialNextCursor,
+  limit = 20,
   sort,
   tag,
   q,
@@ -49,7 +51,7 @@ export function PostListInfinite({
     setIsLoading(false);
     loadingRef.current = false;
     requestIdRef.current += 1;
-  }, [initialPosts, initialNextCursor, sort, tag, q]);
+  }, [initialPosts, initialNextCursor, limit, sort, tag, q]);
 
   const loadMore = useCallback(async () => {
     if (loadingRef.current || !nextCursor) return;
@@ -60,7 +62,7 @@ export function PostListInfinite({
     setIsLoading(true);
     setLoadError(false);
     try {
-      const result = await listPosts({ sort, tag, q, cursor: nextCursor });
+      const result = await listPosts({ sort, tag, q, cursor: nextCursor, limit });
       if (requestId !== requestIdRef.current) return;
       setPosts((previous) => {
         const seen = new Set(previous.map((post) => post.id));
@@ -77,7 +79,7 @@ export function PostListInfinite({
         setIsLoading(false);
       }
     }
-  }, [nextCursor, sort, tag, q]);
+  }, [limit, nextCursor, sort, tag, q]);
 
   // Intersection Observer for infinite scroll
   useEffect(() => {
@@ -104,7 +106,13 @@ export function PostListInfinite({
 
   return (
     <div className="space-y-3">
-      <div className={layout === 'grid' ? 'grid grid-cols-1 items-start gap-3 sm:grid-cols-2 xl:grid-cols-3' : 'space-y-2'}>
+      <div
+        className={
+          layout === 'grid'
+            ? 'grid grid-cols-1 items-start gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4'
+            : 'space-y-2'
+        }
+      >
         {posts.map((post) => (
           <PostCard
             key={post.id}
@@ -121,19 +129,25 @@ export function PostListInfinite({
 
       {/* Loading indicator */}
       {isLoading && (
-        <div className="space-y-2 py-2">
-          <Skeleton className="h-24 w-full rounded-md" />
-          <Skeleton className="h-24 w-full rounded-md" />
+        <div
+          className={
+            layout === 'grid'
+              ? 'grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4'
+              : 'space-y-2'
+          }
+        >
+          {Array.from({ length: layout === 'grid' ? 4 : 2 }).map((_, index) => (
+            <Skeleton
+              key={index}
+              className={layout === 'grid' ? 'h-48 w-full rounded-xl' : 'h-28 w-full rounded-xl'}
+            />
+          ))}
         </div>
       )}
 
       {/* Load more button (fallback for manual loading) */}
       {!isLoading && !loadError && (
-        <LoadMoreButton
-          hasMore={hasMore}
-          isLoading={isLoading}
-          onLoadMore={loadMore}
-        />
+        <LoadMoreButton hasMore={hasMore} isLoading={isLoading} onLoadMore={loadMore} />
       )}
 
       {loadError && (
@@ -153,8 +167,12 @@ export function PostListInfinite({
 
       {/* Empty state */}
       {posts.length === 0 && (
-        <div className="py-12 text-center text-muted-foreground">
-          暂无帖子
+        <div className="flex flex-col items-center rounded-2xl border border-dashed bg-card/50 px-4 py-14 text-center">
+          <Layers3 className="size-9 text-muted-foreground/40" />
+          <p className="mt-3 font-medium">暂无帖子</p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {q ? '换个关键词试试，或稍后再来看看。' : '这里还没有内容，欢迎发布第一篇帖子。'}
+          </p>
         </div>
       )}
     </div>

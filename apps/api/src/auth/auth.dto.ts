@@ -4,7 +4,6 @@ import {
   IsIn,
   IsOptional,
   IsString,
-  IsUrl,
   Matches,
   MaxLength,
   MinLength,
@@ -42,7 +41,10 @@ export class RegisterDto {
   method!: 'email' | 'screenshot';
 
   @ValidateIf((value: RegisterDto) => value.method === 'screenshot')
-  @IsUrl({ require_protocol: true, protocols: ['http', 'https'] })
+  // New uploads use an opaque `upload://...` reference. The service performs
+  // the authoritative ownership/path check, so the DTO must not reject that
+  // internal reference (or a legacy CDN URL) first.
+  @IsString()
   @MaxLength(2048)
   screenshotUrl?: string;
 
@@ -60,7 +62,7 @@ export class RegisterDto {
 export class StudentPasswordDto {
   @IsString()
   @MinLength(1)
-  @MaxLength(32)
+  @MaxLength(254)
   studentId!: string;
 
   @IsString()
@@ -78,6 +80,13 @@ export class VerifyEmailDto {
   @IsString()
   @Matches(/^\d{6}$/)
   code!: string;
+}
+
+export class ResendEmailCodeDto {
+  @IsString()
+  @MinLength(1)
+  @MaxLength(32)
+  studentId!: string;
 }
 
 export class PasswordResetRequestDto {

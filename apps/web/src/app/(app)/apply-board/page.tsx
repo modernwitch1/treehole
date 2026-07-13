@@ -101,9 +101,7 @@ export default function ApplyBoardPage() {
               required
               className="block w-full rounded-lg border border-input bg-transparent px-4 py-2.5 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
             />
-            <p className="mt-2 text-xs text-muted-foreground tabular-nums">
-              {name.length} / 50
-            </p>
+            <p className="mt-2 text-xs text-muted-foreground tabular-nums">{name.length} / 50</p>
           </CardContent>
         </Card>
 
@@ -168,7 +166,13 @@ export default function ApplyBoardPage() {
             onChange={(event) => setRulesAcknowledged(event.target.checked)}
             className="mt-1"
           />
-          <span>我确认板块名称、简介和申请理由均遵守社区规则，不利用申请入口发布违规或引流信息。</span>
+          <span>
+            我确认板块名称、简介和申请理由均遵守
+            <Link href="/rules" className="mx-1 font-medium underline underline-offset-4">
+              社区规则
+            </Link>
+            ，不利用申请入口发布违规或引流信息。
+          </span>
         </label>
 
         <Separator />

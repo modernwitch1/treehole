@@ -37,6 +37,7 @@ export class UploadController {
     response.setHeader('Content-Type', file.contentType);
     response.setHeader('Cache-Control', file.cacheControl);
     response.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+    response.setHeader('X-Content-Type-Options', 'nosniff');
     response.send(file.body);
   }
 

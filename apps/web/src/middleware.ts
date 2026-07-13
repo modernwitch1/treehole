@@ -33,7 +33,17 @@ export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   // 公开路由：无需登录也可访问
-  const publicPaths = ['/login', '/register', '/forgot-password', '/banned'];
+  const publicPaths = [
+    '/login',
+    '/register',
+    '/forgot-password',
+    '/banned',
+    '/community-rules',
+    '/terms',
+    '/privacy',
+    '/help',
+    '/contact',
+  ];
   const isPublic = publicPaths.some((p) => pathname.startsWith(p));
 
   if (!session && !isPublic) {

@@ -11,6 +11,7 @@ import type { AdminPrincipal } from '../admin-auth/admin-auth.service';
 import { COMMUNITY_RULES_VERSION } from '../common/community-safety.constants';
 import { DeleteObjectCommand, GetObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { AppConfig } from '../config/app.config';
+import { parseRegistrationUploadKey } from '../upload/media-url';
 
 @Injectable()
 export class RegistrationService {
@@ -38,9 +39,7 @@ export class RegistrationService {
       email: r.email,
       username: r.username,
       realName: r.realName,
-      screenshotUrl: r.screenshotUrl
-        ? `${this.config.get('APP_BASE_URL').replace(/\/+$/, '')}/api/v1/admin/registrations/${r.id}/screenshot`
-        : null,
+      screenshotUrl: r.screenshotUrl ? `/api/v1/admin/registrations/${r.id}/screenshot` : null,
       method: r.method,
       status: r.status.toLowerCase(),
       reviewNote: r.reviewNote,
@@ -268,20 +267,7 @@ export class RegistrationService {
   }
 
   private registrationUploadKey(value: string): string {
-    try {
-      const base = new URL(`${this.config.get('CDN_BASE_URL').replace(/\/+$/, '')}/`);
-      const url = new URL(value);
-      if (url.origin !== base.origin || !url.pathname.startsWith(base.pathname)) {
-        throw new Error();
-      }
-      const key = url.pathname.slice(base.pathname.length);
-      if (!/^registrations\/[A-Za-z0-9_-]+\.(?:jpg|png)$/.test(key)) {
-        throw new Error();
-      }
-      return key;
-    } catch {
-      throw new NotFoundException('截图不存在');
-    }
+    return parseRegistrationUploadKey(value, this.config.get('CDN_BASE_URL'));
   }
 
   private async purgeReviewedScreenshot(requestId: bigint, screenshotUrl: string) {

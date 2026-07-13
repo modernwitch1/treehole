@@ -18,6 +18,7 @@ import {
   TrendingUp,
   Compass,
   MessageSquare,
+  Utensils,
   X,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -52,6 +53,7 @@ import {
 import { relativeTime } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import type { CurrentUser, NotificationItem } from '@/types/api';
+import { toast } from 'sonner';
 
 interface HeaderProps {
   currentUser: CurrentUser | null;
@@ -63,6 +65,7 @@ const MOBILE_NAV = [
   { href: '/popular', label: '热门', icon: TrendingUp },
   { href: '/compass', label: '选课指南针', icon: Compass },
   { href: '/chatrooms', label: '在线聊天房', icon: MessageSquare },
+  { href: '/food', label: '美食模块', icon: Utensils },
   { href: '/messages', label: '我的私信', icon: Inbox },
   { href: '/settings', label: '设置', icon: Settings },
 ];
@@ -80,7 +83,7 @@ export function Header({ currentUser }: HeaderProps) {
 
   return (
     <Dialog open={mobileNavOpen} onOpenChange={setMobileNavOpen}>
-      <header className="sticky top-0 z-40 h-16 border-b border-border/80 bg-background/[0.88] shadow-[0_1px_12px_rgba(28,50,77,0.04)] backdrop-blur-xl supports-[backdrop-filter]:bg-background/[0.78]">
+      <header className="sticky top-0 z-40 h-[4.25rem] border-b border-border/80 bg-background/95 shadow-[0_1px_12px_rgba(25,50,45,0.05)] [&_svg]:stroke-[1.8]">
         <div className="flex h-full w-full items-center gap-1 px-2 sm:gap-2 sm:px-4 lg:px-6">
           <DialogTrigger asChild>
             <Button
@@ -104,7 +107,7 @@ export function Header({ currentUser }: HeaderProps) {
             </span>
           </Link>
 
-          <div className="ml-2 hidden flex-1 md:flex md:max-w-xl lg:max-w-2xl">
+          <div className="mx-2 hidden flex-1 md:mx-6 md:flex md:max-w-2xl">
             <SearchBar />
           </div>
 
@@ -123,46 +126,59 @@ export function Header({ currentUser }: HeaderProps) {
           <div className="flex shrink-0 items-center gap-0.5 md:ml-auto sm:gap-1">
             {currentUser ? (
               <>
-                <Button asChild variant="ghost" size="sm" className="hidden rounded-full sm:inline-flex">
-                  <Link href="/submit">
-                    <MessageSquarePlus className="size-4" />
-                    <span className="hidden lg:inline">发帖</span>
-                  </Link>
-                </Button>
+                <>
+                  <Button
+                    asChild
+                    variant="ghost"
+                    size="sm"
+                    className="hidden rounded-full sm:inline-flex lg:hidden"
+                  >
+                    <Link href="/submit">
+                      <MessageSquarePlus className="size-4" />
+                      <span className="hidden lg:inline">发帖</span>
+                    </Link>
+                  </Button>
 
-                <Button asChild variant="ghost" size="icon" className="sm:hidden" aria-label="发帖">
-                  <Link href="/submit">
-                    <MessageSquarePlus className="size-5" />
-                  </Link>
-                </Button>
+                  <Button
+                    asChild
+                    variant="ghost"
+                    size="icon"
+                    className="sm:hidden"
+                    aria-label="发帖"
+                  >
+                    <Link href="/submit">
+                      <MessageSquarePlus className="size-5" />
+                    </Link>
+                  </Button>
 
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="relative"
-                  asChild
-                  aria-label={
-                    currentUser.unreadConversations > 0
-                      ? `私信，${currentUser.unreadConversations} 条未读`
-                      : '私信'
-                  }
-                >
-                  <Link href="/messages">
-                    <Inbox className="size-[1.1rem]" />
-                    {currentUser.unreadConversations > 0 && (
-                      <Badge
-                        variant="default"
-                        className="absolute -right-0.5 -top-0.5 h-4 min-w-4 px-1 py-0 text-[10px] leading-none"
-                      >
-                        {currentUser.unreadConversations > 9
-                          ? '9+'
-                          : currentUser.unreadConversations}
-                      </Badge>
-                    )}
-                  </Link>
-                </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="relative"
+                    asChild
+                    aria-label={
+                      currentUser.unreadConversations > 0
+                        ? `私信，${currentUser.unreadConversations} 条未读`
+                        : '私信'
+                    }
+                  >
+                    <Link href="/messages">
+                      <Inbox className="size-[1.1rem]" />
+                      {currentUser.unreadConversations > 0 && (
+                        <Badge
+                          variant="default"
+                          className="absolute -right-0.5 -top-0.5 h-4 min-w-4 px-1 py-0 text-[10px] leading-none"
+                        >
+                          {currentUser.unreadConversations > 9
+                            ? '9+'
+                            : currentUser.unreadConversations}
+                        </Badge>
+                      )}
+                    </Link>
+                  </Button>
 
-                <NotificationBell initialUnreadCount={currentUser.unreadNotifications} />
+                  <NotificationBell initialUnreadCount={currentUser.unreadNotifications} />
+                </>
 
                 <span className="hidden sm:block">
                   <ThemeToggle />
@@ -189,7 +205,7 @@ export function Header({ currentUser }: HeaderProps) {
         {mobileSearchOpen && (
           <div
             id="mobile-site-search"
-            className="absolute inset-x-0 top-full border-b border-border/80 bg-background/[0.96] p-3 shadow-lg backdrop-blur-xl md:hidden"
+            className="absolute inset-x-0 top-full border-b border-border/80 bg-background p-3 shadow-lg md:hidden"
           >
             <div className="mx-auto flex max-w-lg items-center gap-2">
               <SearchBar autoFocus onSubmitted={() => setMobileSearchOpen(false)} />
@@ -209,49 +225,49 @@ export function Header({ currentUser }: HeaderProps) {
 
       <DialogContent className="left-0 top-0 flex h-[100dvh] max-h-none w-[min(20rem,88vw)] max-w-none translate-x-0 translate-y-0 flex-col gap-0 overflow-hidden rounded-none border-y-0 border-l-0 p-0 lg:hidden">
         <DialogHeader className="border-b border-border/80 px-4 py-4 text-left">
-            <DialogTitle className="flex items-center gap-2.5 text-base">
-              <BrandMark className="size-9" />
-              浙工商树洞
-            </DialogTitle>
-            <DialogDescription className="sr-only">移动端主导航</DialogDescription>
+          <DialogTitle className="flex items-center gap-2.5 text-base">
+            <BrandMark className="size-9" />
+            浙工商树洞
+          </DialogTitle>
+          <DialogDescription className="sr-only">移动端主导航</DialogDescription>
         </DialogHeader>
         <nav aria-label="主导航" className="flex flex-1 flex-col gap-1 overflow-y-auto p-3">
-            <Button asChild className="mb-3 w-full justify-center rounded-xl">
-              <Link href="/submit">
-                <MessageSquarePlus className="size-4" />
-                发布帖子
+          <Button asChild className="mb-3 w-full justify-center rounded-xl">
+            <Link href="/submit">
+              <MessageSquarePlus className="size-4" />
+              发布帖子
+            </Link>
+          </Button>
+          {MOBILE_NAV.map(({ href, label, icon: Icon }) => {
+            const active = href === '/' ? pathname === '/' : pathname.startsWith(href);
+            return (
+              <Link
+                key={href}
+                href={href}
+                aria-current={active ? 'page' : undefined}
+                className={cn(
+                  'flex min-h-11 items-center gap-3 rounded-lg px-3 text-sm font-medium transition-colors [&_svg]:stroke-[1.8]',
+                  active
+                    ? 'bg-primary/10 text-primary shadow-sm ring-1 ring-primary/10'
+                    : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground',
+                )}
+              >
+                <Icon className="size-[1.125rem]" />
+                {label}
               </Link>
-            </Button>
-            {MOBILE_NAV.map(({ href, label, icon: Icon }) => {
-              const active = href === '/' ? pathname === '/' : pathname.startsWith(href);
-              return (
-                <Link
-                  key={href}
-                  href={href}
-                  aria-current={active ? 'page' : undefined}
-                  className={cn(
-                    'flex min-h-11 items-center gap-3 rounded-xl px-3 text-sm font-medium transition-colors',
-                    active
-                      ? 'bg-primary/10 text-primary shadow-sm ring-1 ring-primary/10'
-                      : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground',
-                  )}
-                >
-                  <Icon className="size-[1.125rem]" />
-                  {label}
-                </Link>
-              );
-            })}
+            );
+          })}
         </nav>
         <div className="border-t border-border/80 bg-muted/30 p-4">
-            <div className="mb-3 flex items-center justify-between text-sm">
-              <span className="text-muted-foreground">显示模式</span>
-              <ThemeToggle />
-            </div>
-            <p className="text-xs leading-relaxed text-muted-foreground">
-              © 2026 浙工商树洞
-              <br />
-              仅面向 @pop.zjgsu.edu.cn 学生
-            </p>
+          <div className="mb-3 flex items-center justify-between text-sm">
+            <span className="text-muted-foreground">显示模式</span>
+            <ThemeToggle />
+          </div>
+          <p className="text-xs leading-relaxed text-muted-foreground">
+            © 2026 浙工商树洞
+            <br />
+            仅面向 @pop.zjgsu.edu.cn 学生
+          </p>
         </div>
       </DialogContent>
     </Dialog>
@@ -272,26 +288,45 @@ function NotificationBell({ initialUnreadCount }: { initialUnreadCount: number }
       setItems(page.items);
       setUnreadCount(page.unreadCount);
       loadedRef.current = true;
+    } catch (error) {
+      toast.error((error as Error).message || '通知加载失败，请稍后重试');
     } finally {
       setLoading(false);
     }
   }
 
   async function markRead(id: string) {
+    const previousItems = items;
+    const target = previousItems.find((item) => item.id === id);
+    if (!target || target.readAt) return;
+    const now = new Date().toISOString();
     setItems((current) =>
-      current.map((item) =>
-        item.id === id && !item.readAt ? { ...item, readAt: new Date().toISOString() } : item,
-      ),
+      current.map((item) => (item.id === id ? { ...item, readAt: now } : item)),
     );
     setUnreadCount((count) => Math.max(0, count - 1));
-    await markNotificationRead(id).catch(() => {});
+    try {
+      await markNotificationRead(id);
+    } catch (error) {
+      setItems(previousItems);
+      setUnreadCount((count) => count + 1);
+      toast.error((error as Error).message || '通知状态更新失败');
+    }
   }
 
   async function markAllRead() {
+    if (unreadCount === 0) return;
+    const previousItems = items;
+    const previousUnreadCount = unreadCount;
     const now = new Date().toISOString();
     setItems((current) => current.map((item) => ({ ...item, readAt: item.readAt ?? now })));
     setUnreadCount(0);
-    await markAllNotificationsRead().catch(() => {});
+    try {
+      await markAllNotificationsRead();
+    } catch (error) {
+      setItems(previousItems);
+      setUnreadCount(previousUnreadCount);
+      toast.error((error as Error).message || '通知状态更新失败');
+    }
   }
 
   return (
@@ -322,7 +357,7 @@ function NotificationBell({ initialUnreadCount }: { initialUnreadCount: number }
       </DropdownMenuTrigger>
       <DropdownMenuContent
         align="end"
-        className="w-[min(22rem,calc(100vw-1rem))] rounded-xl border-border/80 p-1.5 shadow-xl"
+        className="w-[min(22rem,calc(100vw-1rem))] rounded-xl border-border/80 p-1.5 shadow-xl [&_svg]:stroke-[1.8]"
       >
         <div className="flex items-center justify-between px-2 py-1.5">
           <DropdownMenuLabel className="p-0">通知</DropdownMenuLabel>
@@ -382,13 +417,7 @@ function NotificationBell({ initialUnreadCount }: { initialUnreadCount: number }
   );
 }
 
-function SearchBar({
-  autoFocus,
-  onSubmitted,
-}: {
-  autoFocus?: boolean;
-  onSubmitted?: () => void;
-}) {
+function SearchBar({ autoFocus, onSubmitted }: { autoFocus?: boolean; onSubmitted?: () => void }) {
   const router = useRouter();
   const [value, setValue] = React.useState('');
 
@@ -404,15 +433,15 @@ function SearchBar({
       <label htmlFor={autoFocus ? 'mobile-search-input' : 'site-search-input'} className="sr-only">
         搜索帖子
       </label>
-      <Search className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+      <Search className="pointer-events-none absolute left-3.5 top-1/2 size-[1.1rem] -translate-y-1/2 text-primary/80 stroke-[1.8]" />
       <Input
         id={autoFocus ? 'mobile-search-input' : 'site-search-input'}
         type="search"
         autoFocus={autoFocus}
         value={value}
         onChange={(e) => setValue(e.target.value)}
-        placeholder="搜索帖子…"
-        className="h-10 rounded-full border-border/70 bg-muted/70 pl-10 pr-4 shadow-none hover:bg-muted focus-visible:bg-background"
+        placeholder="搜索帖子、话题或板块…"
+        className="h-11 rounded-xl border-border/80 bg-card pl-10 pr-4 shadow-sm ring-1 ring-primary/10 transition-[border-color,box-shadow] duration-150 hover:border-primary/30 focus-visible:border-primary focus-visible:bg-card focus-visible:ring-2 focus-visible:ring-primary/20"
       />
     </form>
   );

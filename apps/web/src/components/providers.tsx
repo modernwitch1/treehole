@@ -4,6 +4,7 @@ import { ThemeProvider as NextThemeProvider } from 'next-themes';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from 'sonner';
 import { TooltipProvider } from '@/components/ui/tooltip';
+import { ColorThemeProvider } from '@/components/color-theme-provider';
 import { useState } from 'react';
 
 export function Providers({ children }: { children: React.ReactNode }) {
@@ -21,18 +22,20 @@ export function Providers({ children }: { children: React.ReactNode }) {
   );
 
   return (
-    <NextThemeProvider
-      attribute="class"
-      defaultTheme="light"
-      enableSystem
-      disableTransitionOnChange
-    >
-      <QueryClientProvider client={queryClient}>
-        <TooltipProvider delayDuration={150}>
-          {children}
-          <Toaster position="bottom-right" theme="system" richColors closeButton />
-        </TooltipProvider>
-      </QueryClientProvider>
-    </NextThemeProvider>
+    <ColorThemeProvider>
+      <NextThemeProvider
+        attribute="class"
+        defaultTheme="light"
+        enableSystem
+        disableTransitionOnChange
+      >
+        <QueryClientProvider client={queryClient}>
+          <TooltipProvider delayDuration={150}>
+            {children}
+            <Toaster position="bottom-right" theme="system" richColors closeButton />
+          </TooltipProvider>
+        </QueryClientProvider>
+      </NextThemeProvider>
+    </ColorThemeProvider>
   );
 }

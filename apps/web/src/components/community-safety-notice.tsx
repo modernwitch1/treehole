@@ -39,7 +39,10 @@ export function CommunitySafetyNotice({
               <p className="text-muted-foreground">{TRACEABILITY_NOTICE}</p>
             </>
           )}
-          <Link href="/rules" className="inline-flex font-medium text-foreground underline-offset-4 hover:underline">
+          <Link
+            href="/rules"
+            className="inline-flex font-medium text-foreground underline-offset-4 hover:underline"
+          >
             查看完整社区规则、处罚与申诉说明
           </Link>
         </div>

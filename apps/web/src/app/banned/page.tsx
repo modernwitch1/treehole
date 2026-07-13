@@ -246,7 +246,7 @@ function BannedContent() {
               退出登录
             </Button>
             <Button variant="ghost" asChild>
-              <Link href="/rules">查看社区规则</Link>
+              <Link href="/community-rules">查看社区规则</Link>
             </Button>
           </div>
         </CardContent>

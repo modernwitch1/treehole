@@ -25,7 +25,7 @@ import { StatCard } from '@/components/stat-card';
 import { TrendChart } from '@/components/trend-chart';
 import { getCurrentAdmin, getStats, listReports, listAuditLogs } from '@/lib/api';
 import { relativeTime } from '@/lib/format';
-import type { AdminAuditLog, AdminReport, AdminStats } from '@/types/admin';
+import type { AdminAuditLog, AdminCurrentUser, AdminReport, AdminStats } from '@/types/admin';
 
 const CATEGORY_LABEL: Record<string, string> = {
   illegal: '违法',
@@ -77,40 +77,84 @@ export default function DashboardPage() {
   const [loading, setLoading] = React.useState(true);
   const [canReviewAppeals, setCanReviewAppeals] = React.useState(false);
   const [isSuperadmin, setIsSuperadmin] = React.useState(false);
+  const [adminRole, setAdminRole] = React.useState<AdminCurrentUser['role'] | null>(null);
+  const [error, setError] = React.useState('');
+  const [retryKey, setRetryKey] = React.useState(0);
   const pathname = usePathname();
 
   React.useEffect(() => {
+    let active = true;
     setLoading(true);
-    const adminRequest = getCurrentAdmin();
-    Promise.all([
-      getStats(),
-      listReports({ status: 'open', pageSize: 100 }),
-      adminRequest.then((admin) =>
-        admin?.role === 'superadmin'
-          ? listAuditLogs({ pageSize: 100 }).catch(() => ({
-              items: [],
-              total: 0,
-              page: 1,
-              pageSize: 100,
-              totalPages: 0,
-            }))
-          : Promise.resolve({ items: [] as AdminAuditLog[] }),
-      ),
-      adminRequest,
-    ])
-      .then(([s, r, l, admin]) => {
+    setError('');
+
+    async function load() {
+      try {
+        const admin = await getCurrentAdmin();
+        if (!admin) throw new Error('后台登录已失效，请重新登录');
+        if (!active) return;
+        setAdminRole(admin.role);
+        setCanReviewAppeals(admin.role === 'superadmin');
+        setIsSuperadmin(admin.role === 'superadmin');
+
+        // 普通管理员和版主只需要进入自己的工作入口，不请求超级管理员专属统计接口。
+        if (admin.role !== 'superadmin') return;
+
+        const [s, r, l] = await Promise.all([
+          getStats(),
+          listReports({ status: 'open', pageSize: 100 }),
+          listAuditLogs({ pageSize: 100 }).catch(() => ({
+            items: [],
+            total: 0,
+            page: 1,
+            pageSize: 100,
+            totalPages: 0,
+          })),
+        ]);
+        if (!active) return;
         setStats(s);
         setOpenReports(r.items);
         setRecentLogs(l.items);
-        setCanReviewAppeals(admin?.role === 'superadmin');
-        setIsSuperadmin(admin?.role === 'superadmin');
-      })
-      .finally(() => setLoading(false));
-  }, [pathname]);
+      } catch (requestError) {
+        if (active) {
+          setStats(null);
+          setError((requestError as Error).message || '仪表盘加载失败');
+        }
+      } finally {
+        if (active) setLoading(false);
+      }
+    }
 
-  if (loading || !stats) {
+    void load();
+    return () => {
+      active = false;
+    };
+  }, [pathname, retryKey]);
+
+  if (loading) {
     return <div className="py-12 text-center text-sm text-muted-foreground">加载中…</div>;
   }
+
+  if (error) {
+    return (
+      <Card className="mx-auto mt-12 max-w-xl">
+        <CardHeader>
+          <CardTitle>仪表盘暂时无法加载</CardTitle>
+          <CardDescription>{error}</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Button type="button" onClick={() => setRetryKey((key) => key + 1)}>
+            重新加载
+          </Button>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (!stats && adminRole !== 'superadmin') {
+    return <LimitedDashboard role={adminRole ?? 'moderator'} />;
+  }
+
+  if (!stats) return null;
 
   const pendingRegs = stats.pendingRegistrations;
   const openRpts = stats.openReports;
@@ -239,7 +283,12 @@ export default function DashboardPage() {
         <h2 className="mb-3 text-sm font-semibold text-muted-foreground">快捷操作</h2>
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-8">
           {isSuperadmin && (
-            <QuickAction href="/registrations" icon={UserPlus} label="注册审批" badge={pendingRegs} />
+            <QuickAction
+              href="/registrations"
+              icon={UserPlus}
+              label="注册审批"
+              badge={pendingRegs}
+            />
           )}
           <QuickAction
             href="/reports"
@@ -265,18 +314,10 @@ export default function DashboardPage() {
           )}
           <QuickAction href="/content" icon={FileText} label="帖子与评论" />
           <QuickAction href="/chatrooms" icon={MessageSquare} label="聊天房监控" />
-          {isSuperadmin && (
-            <QuickAction href="/sensitive-words" icon={Filter} label="敏感词库" />
-          )}
-          {isSuperadmin && (
-            <QuickAction href="/boards" icon={FolderPlus} label="板块申请" />
-          )}
-          {isSuperadmin && (
-            <QuickAction href="/trace" icon={Fingerprint} label="私信溯源" />
-          )}
-          {isSuperadmin && (
-            <QuickAction href="/settings" icon={Megaphone} label="发全站通知" />
-          )}
+          {isSuperadmin && <QuickAction href="/sensitive-words" icon={Filter} label="敏感词库" />}
+          {isSuperadmin && <QuickAction href="/boards" icon={FolderPlus} label="板块申请" />}
+          {isSuperadmin && <QuickAction href="/trace" icon={Fingerprint} label="私信溯源" />}
+          {isSuperadmin && <QuickAction href="/settings" icon={Megaphone} label="发全站通知" />}
         </div>
       </div>
 
@@ -375,6 +416,46 @@ export default function DashboardPage() {
               {recentLogs.length === 0 && (
                 <p className="py-6 text-center text-sm text-muted-foreground">暂无管理动作</p>
               )}
+            </CardContent>
+          </Card>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function LimitedDashboard({ role }: { role: AdminCurrentUser['role'] }) {
+  const isAdmin = role === 'admin';
+  return (
+    <div className="space-y-6">
+      <header>
+        <h1 className="text-2xl font-bold tracking-tight">欢迎进入管理后台</h1>
+        <p className="mt-1 text-sm text-muted-foreground">
+          当前账号可以访问与自身职责匹配的工作入口，敏感数据和全站统计仅对超级管理员开放。
+        </p>
+      </header>
+      <div className="grid gap-4 sm:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">举报队列</CardTitle>
+            <CardDescription>查看并处理你有权限处理的帖子和美食模块举报。</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button asChild>
+              <Link href="/reports">打开举报队列</Link>
+            </Button>
+          </CardContent>
+        </Card>
+        {isAdmin && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">美食模块</CardTitle>
+              <CardDescription>管理食堂、商家、窗口、商品、评价和商家后台邀请。</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Button asChild>
+                <Link href="/food">打开美食管理</Link>
+              </Button>
             </CardContent>
           </Card>
         )}

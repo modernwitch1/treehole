@@ -24,7 +24,10 @@ type ReportTarget =
   | 'comment'
   | 'conversation'
   | 'direct_message'
-  | 'chatroom_message';
+  | 'chatroom_message'
+  | 'food_post'
+  | 'food_review'
+  | 'food_reply';
 
 export interface TrendRow {
   date: string;
@@ -119,8 +122,8 @@ export class AdminService {
       pageSize?: number;
     },
     admin: AdminPrincipal,
-    ip: string,
-    userAgent?: string | string[],
+    _ip: string,
+    _userAgent?: string | string[],
   ) {
     this.assertSuperadmin(admin, '只有超级管理员可以查看用户隐私信息');
     const q = opts.q?.trim().slice(0, 100);
@@ -378,7 +381,12 @@ export class AdminService {
   }
 
   async listReports(
-    opts: { status?: ReportStatus; category?: AdminSensitiveCategory; page?: number; pageSize?: number },
+    opts: {
+      status?: ReportStatus;
+      category?: AdminSensitiveCategory;
+      page?: number;
+      pageSize?: number;
+    },
     admin: AdminPrincipal,
   ) {
     const { page, pageSize } = this.normalizePagination(opts.page, opts.pageSize);
@@ -387,7 +395,9 @@ export class AdminService {
     const where: Prisma.ReportWhereInput = {
       ...(opts.status ? { status: opts.status } : {}),
       ...(opts.category ? { category: opts.category } : {}),
-      ...(admin.role === 'superadmin' ? {} : { targetType: 'post' }),
+      ...(admin.role === 'superadmin'
+        ? {}
+        : { targetType: { in: ['post', 'food_post', 'food_review', 'food_reply'] } }),
     };
 
     const [reports, total] = await Promise.all([
@@ -455,7 +465,10 @@ export class AdminService {
     if (!report) {
       throw new NotFoundException('举报不存在');
     }
-    if (admin.role !== 'superadmin' && report.targetType !== 'post') {
+    if (
+      admin.role !== 'superadmin' &&
+      !['post', 'food_post', 'food_review', 'food_reply'].includes(report.targetType)
+    ) {
       throw new ForbiddenException('普通管理员只能处理帖子举报');
     }
     if (report.status !== 'open') {
@@ -696,9 +709,18 @@ export class AdminService {
 
     return this.prisma.$transaction(async (tx) => {
       // Persist the audit record before selecting any author identity or student ID.
-      await this.audit(admin, 'post.reveal_author', 'post', post.id, ip, userAgent, {
-        disclosedFields: 'uid,username,email,studentId',
-      }, tx);
+      await this.audit(
+        admin,
+        'post.reveal_author',
+        'post',
+        post.id,
+        ip,
+        userAgent,
+        {
+          disclosedFields: 'uid,username,email,studentId',
+        },
+        tx,
+      );
       const tracedPost = await tx.post.findUniqueOrThrow({
         where: { id: post.id },
         select: { author: { select: { id: true, username: true, email: true } } },
@@ -970,9 +992,7 @@ export class AdminService {
           },
         });
         if (claimedCases.count !== ids.length) {
-          throw new BadRequestException(
-            '部分内容风险过高、未关联案件或状态已变化',
-          );
+          throw new BadRequestException('部分内容风险过高、未关联案件或状态已变化');
         }
       }
 
@@ -1369,10 +1389,9 @@ export class AdminService {
       pageSize?: number;
     },
     admin: AdminPrincipal,
-    ip: string,
-    userAgent?: string | string[],
+    _ip: string,
+    _userAgent?: string | string[],
   ) {
-    this.assertSuperadmin(admin, '只有超级管理员可以审核图片');
     this.assertSuperadmin(admin, '只有超级管理员可以复核处罚申诉');
     const { page, pageSize } = this.normalizePagination(opts.page, opts.pageSize);
     await this.prisma.sanction.updateMany({
@@ -1578,6 +1597,7 @@ export class AdminService {
     ip: string,
     userAgent?: string | string[],
   ) {
+    this.assertSuperadmin(admin, '只有超级管理员可以审核图片');
     if (!['approve', 'reject'].includes(action)) {
       throw new BadRequestException('无效的图片操作');
     }
@@ -1634,8 +1654,8 @@ export class AdminService {
   async listAuditLogs(
     opts: { page?: number; pageSize?: number; actorId?: string },
     admin: AdminPrincipal,
-    ip: string,
-    userAgent?: string | string[],
+    _ip: string,
+    _userAgent?: string | string[],
   ) {
     this.assertSuperadmin(admin, '只有超级管理员可以查看审计日志');
     const { page, pageSize } = this.normalizePagination(opts.page, opts.pageSize);
@@ -1843,8 +1863,8 @@ export class AdminService {
       pageSize?: number;
     },
     admin: AdminPrincipal,
-    ip: string,
-    userAgent?: string | string[],
+    _ip: string,
+    _userAgent?: string | string[],
   ) {
     this.assertSuperadmin(admin, '只有超级管理员可以查看敏感词规则');
     const q = opts.q?.trim().slice(0, 100);
@@ -2216,6 +2236,51 @@ export class AdminService {
       };
     }
 
+    if (targetType === 'food_post') {
+      const post = await this.prisma.foodPost.findUnique({
+        where: { id: targetId },
+        include: { merchant: { select: { name: true } }, window: { select: { name: true } } },
+      });
+      return {
+        type: targetType,
+        title: post?.title,
+        preview: post?.contentMd.slice(0, 220) ?? '美食内容已不存在',
+        merchantName: post?.merchant.name,
+        windowName: post?.window?.name,
+        createdAt: post?.createdAt.toISOString(),
+      };
+    }
+    if (targetType === 'food_review') {
+      const review = await this.prisma.foodReview.findUnique({
+        where: { id: targetId },
+        include: {
+          author: { select: { username: true } },
+          window: { include: { merchant: { select: { name: true } } } },
+        },
+      });
+      return {
+        type: targetType,
+        title: review?.window.name,
+        preview: review?.contentMd.slice(0, 220) ?? '美食评价已不存在',
+        merchantName: review?.window.merchant.name,
+        authorUsername: review?.isAnonymous ? '匿名同学' : review?.author.username,
+        isAnonymous: review?.isAnonymous,
+        createdAt: review?.createdAt.toISOString(),
+      };
+    }
+    if (targetType === 'food_reply') {
+      const reply = await this.prisma.foodReviewReply.findUnique({
+        where: { id: targetId },
+        include: { merchant: { select: { name: true } } },
+      });
+      return {
+        type: targetType,
+        preview: reply?.contentMd.slice(0, 220) ?? '商家回复已不存在',
+        merchantName: reply?.merchant.name,
+        createdAt: reply?.createdAt.toISOString(),
+      };
+    }
+
     const user = await this.prisma.user.findUnique({ where: { id: targetId } });
     return {
       type: 'user',
@@ -2291,6 +2356,27 @@ export class AdminService {
       });
       return;
     }
+    if (targetType === 'food_post') {
+      await tx.foodPost.update({
+        where: { id: targetId },
+        data: { status: 'hidden', legalHold: true },
+      });
+      return;
+    }
+    if (targetType === 'food_review') {
+      await tx.foodReview.update({
+        where: { id: targetId },
+        data: { status: 'hidden', legalHold: true },
+      });
+      return;
+    }
+    if (targetType === 'food_reply') {
+      await tx.foodReviewReply.update({
+        where: { id: targetId },
+        data: { status: 'hidden', legalHold: true },
+      });
+      return;
+    }
     const message = await tx.chatroomMessage.update({
       where: { id: targetId },
       data: { status: 'hidden', isFlagged: true, legalHold: true },
@@ -2321,7 +2407,10 @@ export class AdminService {
       report.targetType === 'post' ||
       report.targetType === 'comment' ||
       report.targetType === 'direct_message' ||
-      report.targetType === 'chatroom_message'
+      report.targetType === 'chatroom_message' ||
+      report.targetType === 'food_post' ||
+      report.targetType === 'food_review' ||
+      report.targetType === 'food_reply'
         ? report.targetType
         : null;
     const blockingCases = surface
@@ -2367,6 +2456,27 @@ export class AdminService {
           data: { legalHold: false },
         });
       }
+      return;
+    }
+    if (report.targetType === 'food_post') {
+      await tx.foodPost.updateMany({
+        where: { id: report.targetId, status: { in: ['published', 'pending_review'] } },
+        data: { status: 'published', legalHold: false },
+      });
+      return;
+    }
+    if (report.targetType === 'food_review') {
+      await tx.foodReview.updateMany({
+        where: { id: report.targetId, status: { in: ['published', 'pending_review'] } },
+        data: { status: 'published', legalHold: false },
+      });
+      return;
+    }
+    if (report.targetType === 'food_reply') {
+      await tx.foodReviewReply.updateMany({
+        where: { id: report.targetId, status: { in: ['published', 'pending_review'] } },
+        data: { status: 'published', legalHold: false },
+      });
       return;
     }
     if (report.targetType === 'direct_message') {
@@ -2428,7 +2538,16 @@ export class AdminService {
 
   private async applyModerationDecision(
     tx: Prisma.TransactionClient,
-    surface: 'post' | 'comment' | 'direct_message' | 'chatroom_message' | 'upload',
+    surface:
+      | 'post'
+      | 'comment'
+      | 'direct_message'
+      | 'chatroom_message'
+      | 'upload'
+      | 'food_post'
+      | 'food_product'
+      | 'food_review'
+      | 'food_reply',
     targetId: bigint,
     decision: 'allow' | 'warn' | 'hide' | 'delete' | 'suspend' | 'ban',
   ) {
@@ -2502,26 +2621,57 @@ export class AdminService {
         where: { id: targetId },
         data: { status, isFlagged: status !== 'published' },
       });
+      return;
+    }
+    if (surface === 'food_post') {
+      await tx.foodPost.update({ where: { id: targetId }, data: { status } });
+      return;
+    }
+    if (surface === 'food_product') {
+      await tx.foodProduct.update({
+        where: { id: targetId },
+        data: { status, deletedAt: status === 'deleted' ? new Date() : null },
+      });
+      return;
+    }
+    if (surface === 'food_review') {
+      await tx.foodReview.update({ where: { id: targetId }, data: { status } });
+      return;
+    }
+    if (surface === 'food_reply') {
+      await tx.foodReviewReply.update({ where: { id: targetId }, data: { status } });
     }
   }
 
   private async releaseModerationCaseEvidenceHold(
     tx: Prisma.TransactionClient,
-    surface: 'post' | 'comment' | 'direct_message' | 'chatroom_message' | 'upload',
+    surface:
+      | 'post'
+      | 'comment'
+      | 'direct_message'
+      | 'chatroom_message'
+      | 'upload'
+      | 'food_post'
+      | 'food_product'
+      | 'food_review'
+      | 'food_reply',
     targetId: bigint,
     currentCaseId: bigint,
   ) {
     if (surface === 'upload') {
       return;
     }
-    const reportTarget = surface as Exclude<ReportTarget, 'user' | 'conversation'>;
+    const reportTarget =
+      surface === 'food_product'
+        ? null
+        : (surface as Exclude<ReportTarget, 'user' | 'conversation'>);
     const [otherCaseHolds, reportHolds] = await Promise.all([
       tx.moderationCase.count({
         where: { id: { not: currentCaseId }, surface, targetId, legalHold: true },
       }),
-      tx.report.count({
-        where: { targetType: reportTarget, targetId, legalHold: true },
-      }),
+      reportTarget
+        ? tx.report.count({ where: { targetType: reportTarget, targetId, legalHold: true } })
+        : Promise.resolve(0),
     ]);
     if (otherCaseHolds > 0 || reportHolds > 0) {
       return;
@@ -2537,6 +2687,18 @@ export class AdminService {
     }
     if (surface === 'direct_message') {
       await tx.directMessage.update({ where: { id: targetId }, data: { legalHold: false } });
+      return;
+    }
+    if (surface === 'food_post') {
+      await tx.foodPost.update({ where: { id: targetId }, data: { legalHold: false } });
+      return;
+    }
+    if (surface === 'food_review') {
+      await tx.foodReview.update({ where: { id: targetId }, data: { legalHold: false } });
+      return;
+    }
+    if (surface === 'food_reply') {
+      await tx.foodReviewReply.update({ where: { id: targetId }, data: { legalHold: false } });
       return;
     }
     const message = await tx.chatroomMessage.update({

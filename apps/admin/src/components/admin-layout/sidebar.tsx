@@ -20,6 +20,7 @@ import {
   Scale,
   FolderPlus,
   Fingerprint,
+  Utensils,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { WEB_APP_URL } from '@/lib/site-urls';
@@ -51,6 +52,7 @@ interface NavItemDef {
     | 'pendingCases'
     | 'pendingAppeals';
   superadminOnly?: boolean;
+  adminOnly?: boolean;
   reportsOnly?: boolean;
 }
 
@@ -74,8 +76,20 @@ const NAV_GROUPS: NavGroupDef[] = [
         badgeKey: 'pendingRegistrations',
         superadminOnly: true,
       },
-      { href: '/reports', label: '举报队列', icon: Flag, badgeKey: 'openReports', reportsOnly: true },
-      { href: '/moderation', label: '统一审核案件', icon: ShieldAlert, badgeKey: 'pendingCases' },
+      {
+        href: '/reports',
+        label: '举报队列',
+        icon: Flag,
+        badgeKey: 'openReports',
+        reportsOnly: true,
+      },
+      {
+        href: '/moderation',
+        label: '统一审核案件',
+        icon: ShieldAlert,
+        badgeKey: 'pendingCases',
+        superadminOnly: true,
+      },
       {
         href: '/appeals',
         label: '处罚申诉',
@@ -83,8 +97,8 @@ const NAV_GROUPS: NavGroupDef[] = [
         badgeKey: 'pendingAppeals',
         superadminOnly: true,
       },
-      { href: '/content', label: '帖子与评论', icon: FileText },
-      { href: '/chatrooms', label: '聊天房监控', icon: MessageSquare },
+      { href: '/content', label: '帖子与评论', icon: FileText, superadminOnly: true },
+      { href: '/chatrooms', label: '聊天房监控', icon: MessageSquare, superadminOnly: true },
     ],
   },
   {
@@ -95,6 +109,10 @@ const NAV_GROUPS: NavGroupDef[] = [
       { href: '/boards', label: '板块申请', icon: FolderPlus, superadminOnly: true },
       { href: '/sensitive-words', label: '敏感词库', icon: Filter, superadminOnly: true },
     ],
+  },
+  {
+    label: '美食模块',
+    items: [{ href: '/food', label: '商家与美食审核', icon: Utensils, adminOnly: true }],
   },
   {
     label: '系统',
@@ -124,38 +142,36 @@ export function AdminSidebar({ role, stats }: SidebarProps) {
       </div>
 
       {stats &&
-        (stats.pendingReview > 0 ||
-          (role === 'superadmin' && stats.pendingAppeals > 0)) && (
-        <div className="flex items-center gap-2 border-b border-sidebar-border px-3 py-2 text-[11px]">
-          {stats.pendingReview > 0 && (
-            <Link
-              href="/moderation"
-              className="flex flex-1 items-center justify-between rounded bg-[color:var(--warning)]/10 px-2 py-1 text-[color:var(--warning)] hover:bg-[color:var(--warning)]/15"
-            >
-              内容待审 <strong className="tabular-nums">{stats.pendingReview}</strong>
-            </Link>
-          )}
-          {role === 'superadmin' && stats.pendingAppeals > 0 && (
-            <Link
-              href="/appeals"
-              className="flex flex-1 items-center justify-between rounded bg-primary/10 px-2 py-1 text-primary hover:bg-primary/15"
-            >
-              待审申诉 <strong className="tabular-nums">{stats.pendingAppeals}</strong>
-            </Link>
-          )}
-        </div>
-      )}
+        (stats.pendingReview > 0 || (role === 'superadmin' && stats.pendingAppeals > 0)) && (
+          <div className="flex items-center gap-2 border-b border-sidebar-border px-3 py-2 text-[11px]">
+            {stats.pendingReview > 0 && (
+              <Link
+                href="/moderation"
+                className="flex flex-1 items-center justify-between rounded bg-[color:var(--warning)]/10 px-2 py-1 text-[color:var(--warning)] hover:bg-[color:var(--warning)]/15"
+              >
+                内容待审 <strong className="tabular-nums">{stats.pendingReview}</strong>
+              </Link>
+            )}
+            {role === 'superadmin' && stats.pendingAppeals > 0 && (
+              <Link
+                href="/appeals"
+                className="flex flex-1 items-center justify-between rounded bg-primary/10 px-2 py-1 text-primary hover:bg-primary/15"
+              >
+                待审申诉 <strong className="tabular-nums">{stats.pendingAppeals}</strong>
+              </Link>
+            )}
+          </div>
+        )}
 
       {/* Nav */}
       <nav className="flex-1 space-y-4 overflow-y-auto p-2">
         {NAV_GROUPS.map((group) => ({
           ...group,
-          items: group.items.filter(
-          (item) =>
-            role === 'superadmin'
-              ? true
-              : item.reportsOnly,
-          ),
+          items: group.items.filter((item) => {
+            if (item.superadminOnly && role !== 'superadmin') return false;
+            if (item.adminOnly && role === 'moderator') return false;
+            return true;
+          }),
         }))
           .filter((group) => group.items.length > 0)
           .map((group) => (

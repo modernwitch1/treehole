@@ -10,7 +10,7 @@ import {
   UnauthorizedException,
   UseGuards,
 } from '@nestjs/common';
-import { IsBoolean, IsNotEmpty, IsOptional, IsString, IsUrl, MaxLength } from 'class-validator';
+import { IsBoolean, IsNotEmpty, IsOptional, IsString, MaxLength } from 'class-validator';
 import type { Request } from 'express';
 import { UserAuthGuard } from '../auth/user-auth.guard';
 import { AdminAuthGuard, type AdminRequest } from '../admin-auth/admin-auth.guard';
@@ -38,13 +38,11 @@ export class CreateChatroomDto {
 
   @IsString()
   @IsOptional()
-  @IsUrl({ require_protocol: true, protocols: ['http', 'https'] })
   @MaxLength(2048)
   avatarUrl?: string;
 
   @IsString()
   @IsOptional()
-  @IsUrl({ require_protocol: true, protocols: ['http', 'https'] })
   @MaxLength(2048)
   backgroundUrl?: string;
 

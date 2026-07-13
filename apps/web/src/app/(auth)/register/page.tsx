@@ -9,7 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
 import { Loader2, CheckCircle2, Upload, Mail, Hash } from 'lucide-react';
-import { submitRegistration, uploadScreenshot, verifyEmailCode } from '@/lib/api';
+import { resendEmailCode, submitRegistration, uploadScreenshot, verifyEmailCode } from '@/lib/api';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { COMMUNITY_RULES_VERSION } from '@/lib/community-safety';
@@ -50,9 +50,19 @@ export default function RegisterPage() {
   const [code, setCode] = React.useState('');
   const [result, setResult] = React.useState<{ message: string } | null>(null);
   const [codeError, setCodeError] = React.useState('');
+  const [resendCooldown, setResendCooldown] = React.useState(0);
+  const [resending, setResending] = React.useState(false);
   const [acceptTerms, setAcceptTerms] = React.useState(false);
   const [acceptCommunityRules, setAcceptCommunityRules] = React.useState(false);
   const passwordStrength = React.useMemo(() => getPasswordStrength(password), [password]);
+
+  React.useEffect(() => {
+    if (resendCooldown <= 0) return;
+    const timer = window.setInterval(() => {
+      setResendCooldown((current) => Math.max(0, current - 1));
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [resendCooldown]);
 
   // ============================================================
   // 提交注册（第一阶段）
@@ -114,6 +124,7 @@ export default function RegisterPage() {
       });
 
       if (method === 'email') {
+        setResendCooldown(60);
         setStep('verifying');
         setResult({
           message: '验证码已发送到你的校园邮箱,请查收',
@@ -153,6 +164,21 @@ export default function RegisterPage() {
     }
   }
 
+  async function handleResendCode() {
+    if (resending || resendCooldown > 0) return;
+    setResending(true);
+    setCodeError('');
+    try {
+      await resendEmailCode(studentId.trim());
+      setResendCooldown(60);
+      toast.success('验证码已重新发送，请查收邮箱');
+    } catch (error) {
+      toast.error((error as Error).message || '验证码发送失败，请稍后重试');
+    } finally {
+      setResending(false);
+    }
+  }
+
   // ============================================================
   // 完成界面
   // ============================================================
@@ -160,7 +186,7 @@ export default function RegisterPage() {
     return (
       <Card className="border-border/60 shadow-card">
         <CardHeader className="space-y-2 text-center">
-        <BrandMark className="mx-auto size-12 lg:hidden" />
+          <BrandMark className="mx-auto size-12 lg:hidden" />
           <div className="mx-auto flex size-12 items-center justify-center rounded-full bg-green-500/10">
             <CheckCircle2 className="size-6 text-green-500" />
           </div>
@@ -186,7 +212,7 @@ export default function RegisterPage() {
     return (
       <Card className="border-border/60 shadow-card">
         <CardHeader className="space-y-2 text-center">
-        <BrandMark className="mx-auto size-12 lg:hidden" />
+          <BrandMark className="mx-auto size-12 lg:hidden" />
           <div className="mx-auto flex size-12 items-center justify-center rounded-full bg-primary/10">
             <Hash className="size-6 text-primary" />
           </div>
@@ -212,10 +238,24 @@ export default function RegisterPage() {
             />
             {codeError && <p className="text-sm text-destructive">{codeError}</p>}
           </div>
-          <Button className="w-full" onClick={handleVerifyCode}>
+          <Button type="button" className="w-full" onClick={handleVerifyCode}>
             确认验证
           </Button>
           <Button
+            type="button"
+            variant="ghost"
+            className="w-full"
+            onClick={() => void handleResendCode()}
+            disabled={resending || resendCooldown > 0}
+          >
+            {resending
+              ? '发送中…'
+              : resendCooldown > 0
+                ? `${resendCooldown} 秒后可重新发送`
+                : '没有收到？重新发送验证码'}
+          </Button>
+          <Button
+            type="button"
             variant="outline"
             className="w-full"
             onClick={() => {
@@ -239,7 +279,7 @@ export default function RegisterPage() {
       <CardHeader className="space-y-2 text-center">
         <BrandMark className="mx-auto size-12 lg:hidden" />
         <CardTitle className="text-2xl tracking-tight">加入浙工商树洞</CardTitle>
-        <CardDescription>仅限浙商大学生 · 需验证身份</CardDescription>
+        <CardDescription>仅限浙工商师生 · 需验证身份</CardDescription>
       </CardHeader>
       <CardContent>
         <div className="mb-6 flex gap-2 rounded-lg bg-muted p-1">
@@ -432,7 +472,7 @@ export default function RegisterPage() {
             />
             <Label htmlFor="community-rules" className="text-xs font-normal leading-relaxed">
               我已阅读并同意《
-              <Link href="/rules" className="font-medium text-foreground hover:underline">
+              <Link href="/community-rules" className="font-medium text-foreground hover:underline">
                 社区规则
               </Link>
               》，理解帖子、评论、私信和聊天房均受规则约束；违规内容可能被拦截、隐藏、处罚，并在涉嫌违法违规时依法依规配合调查。

@@ -40,7 +40,6 @@ export class UserAuthGuard implements CanActivate {
     if (!user || user.deletedAt || user.status === 'banned') {
       throw new UnauthorizedException('账号不可用');
     }
-
     req.user = {
       id: user.id,
       email: user.email,

@@ -1,4 +1,5 @@
 import { redirect } from 'next/navigation';
+import Link from 'next/link';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { DmToggle } from '@/components/dm-toggle';
 import { getCurrentUser } from '@/lib/api';
@@ -28,7 +29,15 @@ export default async function SettingsPage() {
           <DmToggle initial={user.dmAllowed} />
 
           <div className="rounded-lg border bg-muted/40 p-4 text-sm text-muted-foreground">
-            <p className="font-medium text-foreground">规则速览</p>
+            <div className="flex items-center justify-between gap-2">
+              <p className="font-medium text-foreground">规则速览</p>
+              <Link
+                href="/rules"
+                className="text-xs font-medium text-foreground underline underline-offset-4"
+              >
+                查看完整规则
+              </Link>
+            </div>
             <ul className="mt-2 space-y-1 leading-relaxed">
               <li>• 对方未回前,发起方只能发送 1 条消息</li>
               <li>• 对方回复后,双方可以自由对话</li>

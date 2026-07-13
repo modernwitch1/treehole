@@ -450,7 +450,11 @@ export default function ChatroomPage() {
                   className="mt-0.5"
                 />
                 <span>
-                  我确认本条发言遵守社区规则，并知悉违规内容可能被拦截、处罚和依法依规溯源。
+                  我确认本条发言遵守
+                  <Link href="/rules" className="mx-1 font-medium underline underline-offset-4">
+                    社区规则
+                  </Link>
+                  ，并知悉违规内容可能被拦截、处罚和依法依规溯源。
                 </span>
               </label>
             </form>
@@ -514,6 +518,14 @@ export default function ChatroomPage() {
                 匿名仅面向普通用户。仅全站唯一超级管理员可通过受控权限进行溯源，且每次查询都会自动写入审计；普通管理员和版主无此权限。涉嫌违法违规时，平台可依法依规配合学校相关部门或有权机关调查。
               </li>
             </ul>
+            <p className="pt-1 text-center">
+              <Link
+                href="/rules"
+                className="font-medium text-foreground underline underline-offset-4"
+              >
+                查看完整社区规则、处罚与申诉说明
+              </Link>
+            </p>
           </div>
           <DialogFooter className="sm:justify-center">
             <Button
